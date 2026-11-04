@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Specflow</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">Specflow</span>
+    <span class="version">v{{ version }}</span>
+  </header>
+
+  <main class="layout">
+    <section class="chat" aria-label="Czat">
+      <h2>Rozmowa</h2>
+      <div class="chat-log">
+        <p class="placeholder">Tu pojawi się wywiad, który zbuduje konstytucję, specyfikację i plan (M4).</p>
+      </div>
+      <form class="chat-input">
+        <input type="text" placeholder="Opisz, czego potrzebujesz…" disabled>
+        <button type="submit" disabled>Wyślij</button>
+      </form>
+    </section>
+
+    <section class="board" aria-label="Tablica kanban">
+      <h2>Zadania</h2>
+      <div class="columns">
+        {% for key, label in columns %}
+        <div class="column" data-status="{{ key }}">
+          <h3>{{ label }}</h3>
+          <div class="cards"></div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </main>
+</body>
+</html>
