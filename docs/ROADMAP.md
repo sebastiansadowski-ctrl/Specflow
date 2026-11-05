@@ -31,7 +31,7 @@ w kontenerze Docker, na planie ChatGPT. Spec Kit przypięty do konkretnej wersji
 |---|---|---|
 | **M0 – Fundamenty** | Szkielet projektu, CI, README, ARCHITECTURE, ROADMAP, ADR-0001..0003 | CI przechodzi na szkielecie |
 | **M1 – Rdzeń domeny** | Model (Project, Task, Event), SQLite, maszyna stanów zadań z aktorami, parser `tasks.md` → DAG z walidacją (ADR-0004). Run dochodzi w M3, Artifact w M4, migracje Alembic najpóźniej w F04 | Testy jednostkowe na przykładowych `tasks.md` przechodzą |
-| **M2 – Harness i workspace** | Interfejs adaptera, adapter Mock (scenariusze), menedżer workspace (`git init`, `specify init`, commit po zadaniu), adapter OpenCode, obraz Docker | Mock w CI; OpenCode odpowiada lokalnie |
+| **M2 – Harness i workspace** | Port `Harness` i słownik zdarzeń, raport agenta w JSON, profile uprawnień bez `ask`, adapter Mock (scenariusze), adapter OpenCode v2.2.5, menedżer workspace (`git init`, `specify init`, commit po zadaniu), obraz Docker (ADR-0005) | Mock w CI; OpenCode odpowiada lokalnie (nagranie zdarzeń) |
 | **M3 – Orkiestrator i weryfikacja** | Pętla orkiestratora, limity, Rework / Awaiting input, build+testy z konfiguracji, blokada zmian w testach, zdarzenia SSE | Pełny przebieg zadań na Mocku, wszystkie ścieżki statusów |
 | **M4 – Wywiad** | Etapy, checklisty kompletności, podsumowania do akceptacji, wywołania `/speckit.*` | Rozmowa daje kompletne artefakty (Mock, potem OpenCode) |
 | **M5 – Interfejs** | Czat, kanban, podgląd artefaktów, log agenta, pasek etapów | Całość da się przeklikać w przeglądarce |
