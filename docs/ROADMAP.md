@@ -23,14 +23,14 @@
 **Cel:** lokalnie, na jednym komputerze, pokazać cały przepływ: wywiad w czacie → artefakty
 Spec Kit → kanban → agent realizuje zadania → weryfikacja → działający kod z testami.
 
-**Stos:** Python 3.12+, `uv`, FastAPI, Pydantic v2, SQLite + SQLAlchemy 2.0 + Alembic,
+**Stos:** Python 3.12+, `uv`, FastAPI, Pydantic v2, SQLite + SQLAlchemy 2.0 (Alembic później),
 Jinja2 + HTMX + SSE, pytest, ruff, mypy, GitHub Actions. Agent: OpenCode (`opencode serve`)
 w kontenerze Docker, na planie ChatGPT. Spec Kit przypięty do konkretnej wersji.
 
 | Etap | Zakres | Gotowe, gdy… |
 |---|---|---|
 | **M0 – Fundamenty** | Szkielet projektu, CI, README, ARCHITECTURE, ROADMAP, ADR-0001..0003 | CI przechodzi na szkielecie |
-| **M1 – Rdzeń domeny** | Model (Project, Phase, Artifact, Task, Run, Event), SQLite, maszyna stanów zadań, parser `tasks.md` → DAG z walidacją | Testy jednostkowe na przykładowych `tasks.md` przechodzą |
+| **M1 – Rdzeń domeny** | Model (Project, Task, Event), SQLite, maszyna stanów zadań z aktorami, parser `tasks.md` → DAG z walidacją (ADR-0004). Run dochodzi w M3, Artifact w M4, migracje Alembic najpóźniej w F04 | Testy jednostkowe na przykładowych `tasks.md` przechodzą |
 | **M2 – Harness i workspace** | Interfejs adaptera, adapter Mock (scenariusze), menedżer workspace (`git init`, `specify init`, commit po zadaniu), adapter OpenCode, obraz Docker | Mock w CI; OpenCode odpowiada lokalnie |
 | **M3 – Orkiestrator i weryfikacja** | Pętla orkiestratora, limity, Rework / Awaiting input, build+testy z konfiguracji, blokada zmian w testach, zdarzenia SSE | Pełny przebieg zadań na Mocku, wszystkie ścieżki statusów |
 | **M4 – Wywiad** | Etapy, checklisty kompletności, podsumowania do akceptacji, wywołania `/speckit.*` | Rozmowa daje kompletne artefakty (Mock, potem OpenCode) |
