@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 
 from conftest import TEST_POLICY, done_run
@@ -193,3 +194,19 @@ def test_stale_junit_file_cannot_fake_results(project_ws: Workspace, tmp_path: P
     write(project_ws, {"tests/test_calc.py": "def broken(:\n"})
     write(project_ws, {".specflow/junit.xml": JUNIT})  # "podrzucony" wynik
     assert "zbieranie testów" in failed(verify(project_ws, TEST_TASK))
+
+
+def test_same_size_edit_is_not_hidden_by_stale_bytecode(project_ws: Workspace) -> None:
+    """Regresja z CI: "a - b" -> "a + b" w tej samej sekundzie (ten sam rozmiar pliku)."""
+    write(
+        project_ws,
+        {"calc.py": "def add(a, b):\n    return a - b\n", "tests/test_calc.py": FAILING_TEST},
+    )
+    project_ws.commit("red")
+    known = {"tests.test_calc::test_add"}
+    assert not verify(project_ws, IMPL, known=known, checkpoint=["tests/test_calc.py"]).ok
+    calc = project_ws.path / "calc.py"
+    stat = calc.stat()
+    write(project_ws, {"calc.py": "def add(a, b):\n    return a + b\n"})
+    os.utime(calc, ns=(stat.st_atime_ns, stat.st_mtime_ns))  # ta sama sekunda i rozmiar
+    assert verify(project_ws, IMPL, known=known, checkpoint=["tests/test_calc.py"]).ok

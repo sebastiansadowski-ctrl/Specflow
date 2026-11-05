@@ -7,6 +7,7 @@ przejść weryfikację bez działającego kodu (reward hacking). Dlatego:
 - pilnujemy plików chronionych, liczby testów i regresji.
 """
 
+import shutil
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -23,9 +24,17 @@ PYTEST_CONFIG_MARKERS = ("[tool.pytest", "addopts", "testpaths", "python_files")
 TEST_WRITER_ALLOWED = ["pyproject.toml", "uv.lock", "requirements*.txt"]
 
 
+# PYTHONDONTWRITEBYTECODE: plik .py zmieniony w tej samej sekundzie na treść o tej samej
+# długości (np. "a - b" -> "a + b") może zostać wczytany ze STAREGO .pyc - weryfikacja
+# oceniałaby poprzednią wersję kodu. Bez cache bajtkodu zawsze testujemy bieżące pliki.
+NO_BYTECODE = "PYTHONDONTWRITEBYTECODE=1"
+
+
 class VerificationPolicy(BaseModel):
     max_attempts: int = 3
-    test_command: str = f"uv run pytest -q -p no:cacheprovider --junitxml={JUNIT_PATH}"
+    test_command: str = (
+        f"{NO_BYTECODE} uv run pytest -q -p no:cacheprovider --junitxml={JUNIT_PATH}"
+    )
     test_timeout_s: float = 600
     feedback_limit: int = 4000
 
@@ -185,6 +194,9 @@ class Verifier:
         junit = workspace.path / JUNIT_PATH
         junit.parent.mkdir(parents=True, exist_ok=True)
         junit.unlink(missing_ok=True)  # agent nie może podsunąć starego wyniku
+        for stale in workspace.path.rglob("__pycache__"):
+            if ".venv" not in stale.parts:
+                shutil.rmtree(stale, ignore_errors=True)
         result = await self.harness.run_command(
             workspace.path, self.policy.test_command, timeout_s=self.policy.test_timeout_s
         )

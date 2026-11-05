@@ -5,11 +5,14 @@ import pytest
 
 from specflow.harness import AgentReport, RunFinished
 from specflow.verification import JUNIT_PATH, VerificationPolicy
+from specflow.verification.verifier import NO_BYTECODE
 from specflow.workspace import Workspace
 
 # Testy projektu generowanego przez "agenta" uruchamiamy tym samym interpreterem co nasze testy.
 TEST_POLICY = VerificationPolicy(
-    test_command=f"{sys.executable} -m pytest -q -p no:cacheprovider --junitxml={JUNIT_PATH}",
+    test_command=(
+        f"{NO_BYTECODE} {sys.executable} -m pytest -q -p no:cacheprovider --junitxml={JUNIT_PATH}"
+    ),
     test_timeout_s=120,
 )
 
