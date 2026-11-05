@@ -62,10 +62,9 @@ class OpenCodeClient:
     async def events(self, types: list[str]) -> AsyncIterator[AsyncIterator[dict[str, Any]]]:
         """Otwiera strumień SSE. Połączenie jest gotowe po wejściu do kontekstu,
         więc prompt wysłany wewnątrz nie zgubi pierwszych zdarzeń."""
-        params = [("types", t) for t in types]
         try:
             async with self._http.stream(
-                "GET", "/api/event", params=params, timeout=None
+                "GET", "/api/event", params={"types": types}, timeout=None
             ) as response:
                 if response.status_code >= 400:
                     await response.aread()
