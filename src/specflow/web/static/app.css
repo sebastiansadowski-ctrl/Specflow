@@ -1,0 +1,45 @@
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --border: #e3e2dc;
+  --text: #2c2c2a;
+  --muted: #73726c;
+  --accent: #534ab7;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
+h3 { font-size: 13px; font-weight: 500; margin: 0 0 8px; color: var(--muted); }
+
+.topbar {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.brand { font-weight: 600; color: var(--accent); }
+.version { font-size: 12px; color: var(--muted); }
+
+.layout {
+  display: grid; grid-template-columns: minmax(300px, 1fr) 2.2fr; gap: 16px;
+  padding: 16px 20px; height: calc(100vh - 49px);
+}
+
+.chat, .board {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 16px; display: flex; flex-direction: column; min-height: 0;
+}
+.chat-log { flex: 1; overflow-y: auto; }
+.placeholder { color: var(--muted); font-size: 14px; }
+.chat-input { display: flex; gap: 8px; }
+.chat-input input { flex: 1; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; }
+.chat-input button { padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); }
+
+.columns {
+  flex: 1; display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr));
+  gap: 8px; overflow-x: auto;
+}
+.column { background: var(--bg); border-radius: 8px; padding: 8px; min-height: 0; }
+.cards { min-height: 40px; }
