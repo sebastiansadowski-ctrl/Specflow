@@ -1,9 +1,10 @@
 """Test dymny i nagrywarka strumienia zdarzeń prawdziwego OpenCode.
 
-Uruchom lokalnie, gdy kontener z `opencode serve` działa (patrz docker/README.md):
+W laboratorium (patrz docker/README.md) adres, hasło i katalogi biorą się ze zmiennych
+środowiskowych kontenera `lab`:
 
     uv run python -m specflow.harness.opencode.record \\
-        --dir var/projects/smoke --out tests/fixtures/opencode/smoke.jsonl
+        --dir /workspace/smoke --out tests/fixtures/opencode/smoke.jsonl
 
 Zapisuje surowe zdarzenia (JSONL) jako fikstury do testów adaptera i wypisuje,
 jak adapter je przetłumaczył. Dzięki temu CI sprawdza mapowanie bez uruchamiania OpenCode.
@@ -12,6 +13,7 @@ jak adapter je przetłumaczył. Dzięki temu CI sprawdza mapowanie bez uruchamia
 import argparse
 import asyncio
 import json
+import os
 from pathlib import Path
 
 from specflow.harness.base import SessionSpec
@@ -29,9 +31,10 @@ DEFAULT_PROMPT = (
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--url", default="http://127.0.0.1:4096")
-    parser.add_argument("--password", default=None)
-    parser.add_argument("--host-root", default="var/projects")
+    env = os.environ.get
+    parser.add_argument("--url", default=env("OPENCODE_URL", "http://127.0.0.1:4096"))
+    parser.add_argument("--password", default=env("OPENCODE_SERVER_PASSWORD"))
+    parser.add_argument("--host-root", default=env("SPECFLOW_HOST_ROOT", "var/projects"))
     parser.add_argument("--container-root", default="/workspace")
     parser.add_argument("--dir", required=True, help="katalog projektu pod --host-root")
     parser.add_argument("--out", required=True, help="plik JSONL na surowe zdarzenia")
