@@ -1,21 +1,65 @@
-# Kontener z agentem OpenCode dla prototypu (F00). Specflow działa na hoście (`uv run specflow`).
+# Laboratorium Specflow: osobny projekt compose, niezależny od innych stacków na serwerze.
+# Osobna sieć i wolumeny; żadnych portów na zewnątrz; brak dostępu do docker.sock.
+#
+#   docker compose build
+#   docker compose run --rm opencode opencode auth login     # jednorazowo
+#   docker compose up -d
+#   docker compose exec lab bash                             # tu wykonujesz polecenia
+name: specflow-lab
+
+x-image: &image
+  image: specflow-lab:f00
+  build:
+    context: .
+    args:
+      AGENT_UID: ${AGENT_UID:-1000}
+      AGENT_GID: ${AGENT_GID:-1000}
+
+x-hardening: &hardening
+  read_only: true                       # system plików obrazu tylko do odczytu
+  cap_drop: [ALL]                       # żadnych dodatkowych uprawnień jądra
+  security_opt:
+    - no-new-privileges:true            # brak eskalacji (setuid itp.)
+  tmpfs:
+    - /tmp:size=512m
+  pids_limit: 512                       # ochrona przed "fork bomb"
+  restart: unless-stopped
+  networks: [lab]
+  # Zalecane na serwerze współdzielonym z innymi usługami: gVisor (patrz README).
+  # runtime: runsc
+
 services:
   opencode:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: specflow-opencode:2.2.5
-    ports:
-      - "127.0.0.1:4096:4096"
+    <<: [*image, *hardening]
     environment:
-      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-specflow-local}
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?ustaw w docker/.env}
     volumes:
-      # Jedyny katalog projektu widoczny dla agenta.
-      - ../var/projects:/workspace
-      # Logowanie do dostawcy modeli (plan ChatGPT) przetrwa restart kontenera.
-      - opencode-data:/home/agent/.local/share/opencode
-      - opencode-config:/home/agent/.config/opencode
+      - projects:/workspace             # jedyny katalog projektów widoczny dla agenta
+      - opencode-home:/home/agent       # logowanie do modelu, cache, konfiguracja
+    mem_limit: 4g
+    cpus: 2
+
+  lab:
+    <<: [*image, *hardening]
+    command: ["sleep", "infinity"]
+    working_dir: /app
+    depends_on: [opencode]
+    environment:
+      OPENCODE_URL: http://opencode:4096
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?ustaw w docker/.env}
+      SPECFLOW_HOST_ROOT: /workspace    # ta sama ścieżka co w kontenerze agenta
+      UV_PROJECT_ENVIRONMENT: /home/agent/.venv-specflow
+    volumes:
+      - ..:/app                         # repo Specflow (kod, testy, fikstury)
+      - projects:/workspace
+      - lab-home:/home/agent
+    mem_limit: 2g
+    cpus: 1
+
+networks:
+  lab: {}
 
 volumes:
-  opencode-data:
-  opencode-config:
+  projects: {}
+  opencode-home: {}
+  lab-home: {}
