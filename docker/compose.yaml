@@ -1,0 +1,21 @@
+# Kontener z agentem OpenCode dla prototypu (F00). Specflow działa na hoście (`uv run specflow`).
+services:
+  opencode:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: specflow-opencode:2.2.5
+    ports:
+      - "127.0.0.1:4096:4096"
+    environment:
+      OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-specflow-local}
+    volumes:
+      # Jedyny katalog projektu widoczny dla agenta.
+      - ../var/projects:/workspace
+      # Logowanie do dostawcy modeli (plan ChatGPT) przetrwa restart kontenera.
+      - opencode-data:/home/agent/.local/share/opencode
+      - opencode-config:/home/agent/.config/opencode
+
+volumes:
+  opencode-data:
+  opencode-config:

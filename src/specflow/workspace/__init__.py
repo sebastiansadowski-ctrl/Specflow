@@ -1,5 +1,24 @@
-"""Workspace projektu (M2).
+"""Workspace projektu: katalog, `git init`, `specify init`, commit po każdym zadaniu.
 
-Katalog projektu, `git init`, `specify init`, commit po każdym zadaniu,
-uruchamianie kontenera Docker z agentem z dostępem tylko do tego katalogu.
+Katalog jest montowany w kontenerze Docker z agentem jako jedyny dostępny katalog.
 """
+
+from specflow.workspace.manager import (
+    AGENT_AUTHOR,
+    SPEC_KIT_VERSION,
+    Runner,
+    Workspace,
+    WorkspaceError,
+    run_command,
+    slugify,
+)
+
+__all__ = [
+    "AGENT_AUTHOR",
+    "SPEC_KIT_VERSION",
+    "Runner",
+    "Workspace",
+    "WorkspaceError",
+    "run_command",
+    "slugify",
+]
