@@ -8,19 +8,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from specflow import __version__
+from specflow.domain import KANBAN_COLUMNS
 
 WEB_DIR = Path(__file__).parent
-
-# Kolumny kanbanu. W M1 przeniesione do maszyny stanów w `specflow.domain`.
-KANBAN_COLUMNS: list[tuple[str, str]] = [
-    ("backlog", "Backlog"),
-    ("ready", "Ready"),
-    ("in_progress", "In progress"),
-    ("verification", "Verification"),
-    ("awaiting_input", "Awaiting input"),
-    ("rework", "Rework"),
-    ("done", "Done"),
-]
 
 app = FastAPI(title="Specflow", version=__version__)
 app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
@@ -37,5 +27,8 @@ def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"version": __version__, "columns": KANBAN_COLUMNS},
+        {
+            "version": __version__,
+            "columns": [(status.value, label) for status, label in KANBAN_COLUMNS],
+        },
     )

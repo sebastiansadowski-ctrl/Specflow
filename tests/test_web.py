@@ -17,8 +17,8 @@ def test_index_renders_chat_and_all_kanban_columns() -> None:
     assert response.status_code == 200
     html = response.text
     assert 'aria-label="Czat"' in html
-    for key, label in KANBAN_COLUMNS:
-        assert f'data-status="{key}"' in html
+    for status, label in KANBAN_COLUMNS:
+        assert f'data-status="{status.value}"' in html
         assert label in html
 
 
