@@ -6,7 +6,14 @@ services:
       dockerfile: Dockerfile
     image: specflow-opencode:2.2.5
     ports:
+      # Tylko lokalnie. Z innego komputera: tunel SSH (ssh -L 4096:127.0.0.1:4096 ...).
       - "127.0.0.1:4096:4096"
+    # Utwardzenie kontenera: bez dodatkowych uprawnień jądra, bez eskalacji, z limitami.
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 512
+    mem_limit: 4g
+    cpus: 2
     environment:
       OPENCODE_SERVER_PASSWORD: ${OPENCODE_SERVER_PASSWORD:-specflow-local}
     volumes:
