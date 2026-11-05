@@ -58,6 +58,46 @@ class OpenCodeClient:
         except httpx.HTTPError as exc:
             raise HarnessError(f"Nie udało się usunąć sesji {session_id}: {exc}") from exc
 
+    # --- komendy bez udziału modelu (weryfikacja) --------------------------------
+
+    async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        try:
+            response = await self._http.get(path, params=params)
+        except httpx.HTTPError as exc:
+            raise HarnessError(f"OpenCode niedostępny ({path}): {exc}") from exc
+        if response.status_code >= 400:
+            raise HarnessError(f"OpenCode {path} -> {response.status_code}: {response.text[:300]}")
+        data = response.json()["data"]
+        return data if isinstance(data, dict) else {}
+
+    async def shell_create(
+        self, *, directory: str, command: str, timeout_ms: int
+    ) -> dict[str, Any]:
+        try:
+            response = await self._http.post(
+                "/api/shell",
+                params={"location[directory]": directory},
+                json={"command": command, "cwd": directory, "timeout": timeout_ms},
+            )
+        except httpx.HTTPError as exc:
+            raise HarnessError(f"OpenCode niedostępny (/api/shell): {exc}") from exc
+        if response.status_code >= 400:
+            status, text = response.status_code, response.text[:300]
+            raise HarnessError(f"OpenCode /api/shell -> {status}: {text}")
+        data = response.json()["data"]
+        return data if isinstance(data, dict) else {}
+
+    async def shell_get(self, shell_id: str, *, directory: str) -> dict[str, Any]:
+        return await self._get(f"/api/shell/{shell_id}", {"location[directory]": directory})
+
+    async def shell_output(
+        self, shell_id: str, *, directory: str, cursor: int = 0, limit: int = 65536
+    ) -> dict[str, Any]:
+        return await self._get(
+            f"/api/shell/{shell_id}/output",
+            {"location[directory]": directory, "cursor": str(cursor), "limit": str(limit)},
+        )
+
     @asynccontextmanager
     async def events(self, types: list[str]) -> AsyncIterator[AsyncIterator[dict[str, Any]]]:
         """Otwiera strumień SSE. Połączenie jest gotowe po wejściu do kontekstu,

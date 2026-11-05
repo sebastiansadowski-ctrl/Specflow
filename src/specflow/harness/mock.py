@@ -10,11 +10,19 @@ import asyncio
 import itertools
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from specflow.harness.base import CommandPrompt, Prompt, Session, SessionSpec, TextPrompt
+from specflow.harness.base import (
+    CommandPrompt,
+    CommandResult,
+    Prompt,
+    Session,
+    SessionSpec,
+    TextPrompt,
+)
 from specflow.harness.events import (
     AgentEvent,
     AgentMessage,
@@ -97,10 +105,14 @@ class MockHarness:
     def __init__(
         self,
         default: Scenario | None = None,
-        by_match: dict[str, Scenario] | None = None,
+        by_match: dict[str, Scenario | list[Scenario]] | None = None,
     ) -> None:
+        """`by_match`: fragment promptu -> scenariusz albo LISTA scenariuszy odtwarzanych
+        po kolei przy kolejnych wywołaniach (np. porażka, potem sukces po Rework).
+        Ostatni element listy się powtarza."""
         self.default = default or phantom_done()
         self.by_match = by_match or {}
+        self.commands: list[str] = []
         self.prompts: list[tuple[str, Prompt]] = []
         """Historia promptów (session_id, prompt) - do sprawdzania, co dostał agent."""
         self._ids = itertools.count(1)
@@ -117,6 +129,8 @@ class MockHarness:
         )
         for fragment, scenario in self.by_match.items():
             if fragment in text:
+                if isinstance(scenario, list):
+                    return scenario.pop(0) if len(scenario) > 1 else scenario[0]
                 return scenario
         return self.default
 
@@ -161,6 +175,24 @@ class MockHarness:
         final_text = final_text or ""
         yield AgentMessage(text=final_text)
         yield build_run_finished("completed", final_text, expect_report=expect_report)
+
+    async def run_command(self, workdir: Path, command: str, *, timeout_s: float) -> CommandResult:
+        """Mock uruchamia komendy naprawdę (podproces w katalogu projektu), żeby testy
+        weryfikacji działały na prawdziwych wynikach pytest i gita."""
+        self.commands.append(command)
+        process = await asyncio.create_subprocess_shell(
+            command,
+            cwd=workdir,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(process.communicate(), timeout=timeout_s)
+        except TimeoutError:
+            process.kill()
+            await process.wait()
+            return CommandResult(exit_code=None, output="", timed_out=True)
+        return CommandResult(exit_code=process.returncode, output=stdout.decode(errors="replace"))
 
     async def abort(self, session: Session) -> None:
         return None

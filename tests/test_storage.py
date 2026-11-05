@@ -98,7 +98,8 @@ def test_rework_counts_attempts(session: Session, graph: TaskGraph) -> None:
     store.set_status(project.id, "T001", S.VERIFICATION, Actor.ORCHESTRATOR)
     store.set_status(project.id, "T001", S.REWORK, Actor.VERIFICATION)
     store.set_status(project.id, "T001", S.IN_PROGRESS, Actor.ORCHESTRATOR)
-    assert store.get_task(project.id, "T001").attempts == 1
+    # Każde wejście do In progress to podejście: pierwsze + po Rework.
+    assert store.get_task(project.id, "T001").attempts == 2
 
 
 def test_plan_cannot_be_imported_twice(session: Session, graph: TaskGraph) -> None:
