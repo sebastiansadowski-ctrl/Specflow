@@ -55,6 +55,53 @@ flowchart TB
 [8] Zmiana wymagań → [1], przeplanowanie tylko części dotkniętych zmianą
 ```
 
+## Orkiestrator: pętla jednego zadania
+
+Kod (deterministyczny) decyduje o każdym kroku; model pracuje tylko w kroku „Agent pracuje”.
+Szczegóły: `src/specflow/orchestrator/engine.py`, ADR-0001, ADR-0006.
+
+```mermaid
+flowchart TD
+  ready["Zadanie Ready<br/><small>następne wg harmonogramu</small>"]:::status
+  prompt["Sesja i prompt<br/><small>świeża sesja + kontekst</small>"]:::code
+  agent["Agent pracuje<br/><small>model w harnessie</small>"]:::model
+  blocked{"Raport: blocked?"}:::code
+  awaitQ["Awaiting input<br/><small>pytanie do użytkownika</small>"]:::status
+  verify["Weryfikacja<br/><small>diff, testy, checkpoint</small>"]:::code
+  passed{"Przeszło?"}:::code
+  done["Done + commit<br/><small>tylko przez weryfikację</small>"]:::status
+  attempts{"Podejście < 3?"}:::code
+  save["Zapis próby<br/><small>gałąź attempt/, reset</small>"]:::code
+  awaitH["Awaiting input<br/><small>czeka na wskazówkę</small>"]:::status
+
+  ready --> prompt --> agent --> blocked
+  blocked -- tak --> awaitQ
+  blocked -- nie --> verify --> passed
+  passed -- tak --> done
+  passed -- nie --> attempts
+  attempts -- "tak: Rework (ta sama sesja)" --> agent
+  attempts -- nie --> save --> awaitH
+
+  classDef code fill:#EEEDFE,stroke:#534AB7,color:#3C3489
+  classDef model fill:#FAECE7,stroke:#993C1D,color:#712B13
+  classDef status fill:#F1EFE8,stroke:#5F5E5A,color:#444441
+```
+
+## Orkiestrator: powroty z Awaiting input i awarie
+
+Wszystkie ścieżki kończą się powrotem zadania do Ready, ale z innym kontekstem.
+
+```mermaid
+flowchart LR
+  q["Pytanie agenta<br/><small>Awaiting input</small>"]:::status --> a["Odpowiedź<br/><small>decyzja projektu</small>"]:::user --> s1["Ta sama sesja<br/><small>licznik bez zmian</small>"]:::code
+  e["Wyczerpane próby<br/><small>Awaiting input</small>"]:::status --> h["Wskazówka<br/><small>od użytkownika</small>"]:::user --> s2["Nowa sesja<br/><small>licznik od zera + historia porażek</small>"]:::code
+  f["Awaria agenta<br/><small>HarnessError</small>"]:::status --> r["Ponowienia<br/><small>2 s, 10 s, 30 s</small>"]:::code --> p["Ready + pauza projektu<br/><small>podejście nie przepada</small>"]:::code
+
+  classDef code fill:#EEEDFE,stroke:#534AB7,color:#3C3489
+  classDef user fill:#E1F5EE,stroke:#0F6E56,color:#085041
+  classDef status fill:#F1EFE8,stroke:#5F5E5A,color:#444441
+```
+
 ## Co jest AI, a co kodem
 
 | Element | Kto | Wynik |
