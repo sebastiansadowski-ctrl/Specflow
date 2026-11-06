@@ -51,7 +51,8 @@ from specflow.verification import (
 from specflow.workspace import Workspace
 
 S = TaskStatus
-EventListener = Callable[[str, AgentEvent], None]
+EventListener = Callable[[str, str, AgentEvent], None]
+"""(klucz zadania, id sesji, zdarzenie) - np. zapis do dziennika i strumień SSE (M5)."""
 
 
 class OrchestratorConfig(BaseModel):
@@ -94,7 +95,7 @@ class Orchestrator:
         self.verifier = verifier or Verifier(harness, self.policy)
         self.config = config or OrchestratorConfig()
         self.listeners: list[EventListener] = []
-        """Odbiorcy zdarzeń agenta na żywo (kanban/SSE w M5)."""
+        """Odbiorcy zdarzeń agenta na żywo (dziennik zdarzeń → SSE)."""
 
     # --- API -----------------------------------------------------------------------
 
@@ -159,7 +160,8 @@ class Orchestrator:
             session = await self._with_retries(lambda: self.harness.start_session(spec))
             task.session_id = session.id
             prompt = build_task_prompt(self._context(task))
-        task.pending_input = None
+        # `pending_input` czyścimy dopiero po pracy agenta (_attempt): po awarii odpowiedź
+        # użytkownika nie ginie i trafia do promptu nowej sesji (ADR-0008).
         return session, prompt
 
     async def _attempt(
@@ -175,10 +177,11 @@ class Orchestrator:
             base_sha=base,
         )
         try:
-            agent = await self._run_agent(session, prompt)
+            agent = await self._run_agent(session, prompt, task.key)
         except HarnessError as exc:
             self.store.finish_run(run_row, outcome="harness_error")
             return self._pause(task, f"agent niedostępny: {exc}", started=True, base=base)
+        task.pending_input = None
         self._record_run(run_row, agent)
 
         report = agent.finished.report
@@ -196,6 +199,7 @@ class Orchestrator:
             )
 
         self.store.set_status(self.project_id, task.key, S.VERIFICATION, Actor.ORCHESTRATOR)
+        self._commit()  # kanban widzi kolumnę Verification, zanim ruszą testy
         project = self.store.get_project(self.project_id)
         result = await self.verifier.verify(
             TaskUnderTest(key=task.key, title=task.title, is_test=task.is_test, files=task.files),
@@ -296,7 +300,7 @@ class Orchestrator:
 
     # --- agent ---------------------------------------------------------------------
 
-    async def _run_agent(self, session: Session, prompt: str) -> _AgentRun:
+    async def _run_agent(self, session: Session, prompt: str, task_key: str) -> _AgentRun:
         """Uruchamia agenta; przy awarii infrastruktury (HarnessError) ponawia z przerwami."""
 
         async def attempt() -> _AgentRun:
@@ -306,7 +310,7 @@ class Orchestrator:
                 session, TextPrompt(text=prompt), timeout_s=self.config.task_timeout_s
             ):
                 for listener in self.listeners:
-                    listener(session.id, event)
+                    listener(task_key, session.id, event)
                 if isinstance(event, Usage):
                     usage = Usage(
                         input_tokens=usage.input_tokens + event.input_tokens,

@@ -50,7 +50,7 @@ class Workspace:
     def create(
         cls, root: Path, project_id: int, name: str, runner: Runner = run_command
     ) -> "Workspace":
-        path = root / f"{project_id:04d}-{slugify(name)}"
+        path = cls.path_for(root, project_id, name)
         if path.exists() and any(path.iterdir()):
             raise WorkspaceError(f"Katalog {path} już istnieje i nie jest pusty.")
         path.mkdir(parents=True, exist_ok=True)
@@ -61,6 +61,11 @@ class Workspace:
         # Katalog roboczy Specflow (np. wyniki JUnit z weryfikacji) nie trafia do diffu.
         (path / ".gitignore").write_text(".specflow/\n.venv/\n__pycache__/\n.pytest_cache/\n")
         return workspace
+
+    @staticmethod
+    def path_for(root: Path, project_id: int, name: str) -> Path:
+        """Katalog projektu: `<root>/0007-lista-zadan`."""
+        return root / f"{project_id:04d}-{slugify(name)}"
 
     def init_spec_kit(self, integration: str = "opencode") -> None:
         """`specify init --here` w przypiętej wersji; potem commit bazowy."""

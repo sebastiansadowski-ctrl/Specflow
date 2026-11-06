@@ -34,7 +34,8 @@ w kontenerze Docker, na planie ChatGPT. Spec Kit przypięty do konkretnej wersji
 | **M2 – Harness i workspace** | Port `Harness` i słownik zdarzeń, raport agenta w JSON, profile uprawnień bez `ask`, adapter Mock (scenariusze), adapter OpenCode v2.2.5, menedżer workspace (`git init`, `specify init`, commit po zadaniu), obraz Docker (ADR-0005) | Mock w CI; OpenCode odpowiada lokalnie (nagranie zdarzeń) |
 | **M3 – Orkiestrator i weryfikacja** | Pętla orkiestratora (3 podejścia, Rework w tej samej sesji, Awaiting input z odpowiedzią lub wskazówką, gałęzie `attempt/`, pauza przy awarii), prompty z wersją, weryfikacja w sandboxie agenta (`/api/shell`): diff, pliki chronione, JUnit, regresje, TDD, checkpoint historyjki; tabela `runs` (ADR-0006). Strumień SSE do interfejsu: M5 | Pełny przebieg zadań na Mocku, wszystkie ścieżki statusów |
 | **M4 – Wywiad i planowanie** | Etapy projektu (maszyna faz), wywiad slot-filling z JSON-em tury i walidacją, konstytucja z domyślnych zasad + 2 pytania, bramki akceptacji (podsumowania składane przez kod), własny clarify przez znaczniki `[NEEDS CLARIFICATION]`, planista `/speckit.*` z kontrolami artefaktów, pętlą naprawczą `tasks.md` i `analyze` z jedną poprawką CRITICAL; F00 tylko Python (ADR-0007) | Rozmowa daje kompletne artefakty i zadania na tablicy (Mock w CI, potem OpenCode) |
-| **M5 – Interfejs** | Czat, kanban, podgląd artefaktów, log agenta, pasek etapów | Całość da się przeklikać w przeglądarce |
+| **M5a – Backend czasu rzeczywistego** | Ustawienia (CLI > env > `.env`), skrzynka poleceń i worker projektu, odzyskiwanie po awarii i łagodne zamykanie, SQLite WAL, SSE z zapisem do bazy i `Last-Event-ID`, narracja zdarzeń, bezpieczny Markdown i CSP, API projektu, demo na Mocku (ADR-0008) | Demo przechodzi od pierwszego pytania do Done przez API i workera; testy awarii |
+| **M5b – Interfejs** | Czat, kanban, podgląd artefaktów, log agenta, pasek etapów (po ustaleniu GUI/UX) | Całość da się przeklikać w przeglądarce |
 | **M6 – End-to-end i wydanie** | `docker compose`, test E2E na Mocku w CI, instrukcja z OpenCode, scenariusz demo, tag `v0.0.0` | Kryteria akceptacji spełnione |
 
 **Uwaga:** lokalnie nie ma klucza API, więc czat wywiadu również idzie przez OpenCode
@@ -49,6 +50,10 @@ w kontenerze Docker, na planie ChatGPT. Spec Kit przypięty do konkretnej wersji
 4. Instrukcja w README pozwala uruchomić całość od zera.
 
 ## Pomysły na później
+
+- **Szkielet projektu Python składany przez kod.** Stos jest stały, więc `pyproject.toml`
+  z konfiguracją pytest (plik chroniony w weryfikacji) mógłby tworzyć Specflow, a nie agent
+  w zadaniu Setup. Do omówienia przed testem na prawdziwym OpenCode.
 
 - **Profile stosów technologicznych.** W F00 stos jest stały (Python 3.12, FastAPI + Jinja2,
   SQLite, pytest). Później: kilka gotowych profili (np. Node/TypeScript, Django), które

@@ -10,6 +10,9 @@ w turach wywiadu (Interviewer) i w komendach planisty (PlanningPipeline).
         └─ brak → plan
     plan → /speckit.plan → tasks → /speckit.tasks + walidacja + analyze → BRAMKA plan
     BRAMKA plan ─(akceptacja)→ import do kanbanu → building (orkiestrator)
+
+Odporność (ADR-0008): każdy krok planisty jest zapisywany w `planning_step` przed startem
+i czyszczony po nim. `resume_interrupted()` kończy to, co przerwała awaria.
 """
 
 from collections.abc import Awaitable, Callable
@@ -36,6 +39,8 @@ from specflow.workspace import Workspace
 
 P = ProjectPhase
 Gate = Literal["spec", "plan"]
+INTERVIEW_PHASES = (P.CONSTITUTION, P.SPECIFY, P.CLARIFY)
+APPROVAL_MARK = "[zatwierdzono"
 StageFactory = Callable[[], Awaitable[StageResult]]
 
 GATE_SPEC_PROMPT = (
@@ -89,9 +94,9 @@ class ProjectFlow:
             return self._reply(history[-1].text)
         return await self._interview(project, None)
 
-    async def message(self, text: str) -> FlowReply:
+    async def message(self, text: str, *, command_id: int | None = None) -> FlowReply:
         project = self._project()
-        self.store.add_message(self.project_id, "user", text)
+        self.store.add_message(self.project_id, "user", text, command_id=command_id)
         if project.planning_message:
             return await self._retry_planning(project, text)
         if project.gate == "spec":
@@ -104,21 +109,45 @@ class ProjectFlow:
                 .model_copy(update={"stage": "specify", "user_wants_to_finish": False})
                 .model_dump()
             )
-        if P(project.phase) in (P.CONSTITUTION, P.SPECIFY, P.CLARIFY):
+        if P(project.phase) in INTERVIEW_PHASES:
             return await self._interview(project, text)
         return self._reply("Trwa budowa. Postępy widać na tablicy zadań.")
 
-    async def approve(self) -> FlowReply:
+    async def approve(self, *, command_id: int | None = None) -> FlowReply:
         project = self._project()
         if project.gate == "spec":
             self._close_gate(project)
-            self.store.add_message(self.project_id, "user", "[zatwierdzono specyfikację]")
+            self.store.add_message(
+                self.project_id, "user", f"{APPROVAL_MARK} specyfikację]", command_id=command_id
+            )
             return await self._after_spec_approved(project)
         if project.gate == "plan":
             self._close_gate(project)
-            self.store.add_message(self.project_id, "user", "[zatwierdzono plan]")
+            self.store.add_message(
+                self.project_id, "user", f"{APPROVAL_MARK} plan]", command_id=command_id
+            )
             return self._start_building(project)
         return self._reply("Nie ma teraz nic do zatwierdzenia.")
+
+    async def resume_interrupted(self) -> FlowReply:
+        """Kończy pracę przerwaną przez awarię albo restart (polecenie zaczęte, a niezakończone).
+
+        - krok planisty w toku (`planning_step`) → ten krok od nowa (komendy Spec Kit
+          nadpisują pliki, więc powtórzenie jest bezpieczne);
+        - wywiad bez odpowiedzi asystenta na ostatnią wiadomość → tura od nowa;
+        - inaczej nic nie trzeba robić.
+        """
+        project = self._project()
+        if project.planning_step:
+            return await self._resume_step(project)
+        history = self.store.messages(self.project_id)
+        last = history[-1] if history else None
+        waiting = project.gate is None and project.planning_message is None
+        unanswered = last is None or last.role == "user"
+        if P(project.phase) in INTERVIEW_PHASES and waiting and unanswered:
+            user_text = last.text if last and not last.text.startswith(APPROVAL_MARK) else None
+            return await self._interview(project, user_text)
+        return self._reply(last.text if last else "")
 
     # --- wywiad --------------------------------------------------------------------
 
@@ -158,6 +187,7 @@ class ProjectFlow:
     async def _after_constitution(self, project: ProjectRow, state: InterviewState) -> FlowReply:
         result = await self._stage(
             project,
+            "constitution",
             lambda: self.pipeline.constitution(render_constitution_brief(state, project.name)),
         )
         if not result.ok:
@@ -171,7 +201,9 @@ class ProjectFlow:
     async def _after_spec_approved(self, project: ProjectRow) -> FlowReply:
         state = self._state(project)
         result = await self._stage(
-            project, lambda: self.pipeline.specify(render_spec_brief(state), len(state.stories))
+            project,
+            "specify",
+            lambda: self.pipeline.specify(render_spec_brief(state), len(state.stories)),
         )
         if not result.ok:
             return self._block(project, "Specyfikacja nie przeszła kontroli", result)
@@ -193,7 +225,7 @@ class ProjectFlow:
     async def _after_clarify(self, project: ProjectRow, state: InterviewState) -> FlowReply:
         feature_dir = project.feature_dir or ""
         result = await self._stage(
-            project, lambda: self.pipeline.clarify(feature_dir, state.clarifications)
+            project, "clarify", lambda: self.pipeline.clarify(feature_dir, state.clarifications)
         )
         if not result.ok:
             return self._block(project, "Nie udało się uzupełnić specyfikacji", result)
@@ -202,7 +234,7 @@ class ProjectFlow:
 
     async def _plan_and_tasks(self, project: ProjectRow) -> FlowReply:
         feature_dir = project.feature_dir or ""
-        plan = await self._stage(project, lambda: self.pipeline.plan(feature_dir))
+        plan = await self._stage(project, "plan", lambda: self.pipeline.plan(feature_dir))
         if not plan.ok:
             return self._block(project, "Plan techniczny nie przeszedł kontroli", plan)
         self.store.set_phase(self.project_id, P.TASKS)
@@ -210,7 +242,7 @@ class ProjectFlow:
 
     async def _tasks(self, project: ProjectRow) -> FlowReply:
         feature_dir = project.feature_dir or ""
-        tasks = await self._stage(project, lambda: self.pipeline.tasks(feature_dir))
+        tasks = await self._stage(project, "tasks", lambda: self.pipeline.tasks(feature_dir))
         if not tasks.ok or tasks.graph is None:
             return self._block(project, "Lista zadań nie przeszła walidacji", tasks)
         self._pending_graph = tasks.graph
@@ -226,6 +258,7 @@ class ProjectFlow:
         self.store.import_plan(self.project_id, graph)
         self.workspace.commit("docs: specyfikacja i plan (Spec Kit)")
         self.store.set_phase(self.project_id, P.BUILDING)
+        self.store.set_run_state(self.project_id, "running")
         self.store.commit()
         return self._reply("Plan zatwierdzony. Zadania są na tablicy - zaczynamy budowę.")
 
@@ -240,7 +273,11 @@ class ProjectFlow:
         """Planowanie zablokowane: wiadomość użytkownika trafia do planisty jako wskazówka,
         a krok, który utknął, uruchamiamy ponownie."""
         project.planning_message = None
-        await self._stage(project, lambda: self.pipeline.guide(hint))
+        await self._stage(project, "guide", lambda: self.pipeline.guide(hint))
+        return await self._resume_step(project)
+
+    async def _resume_step(self, project: ProjectRow) -> FlowReply:
+        """Ponownie uruchamia krok planowania właściwy dla bieżącej fazy."""
         phase = P(project.phase)
         if phase == P.TASKS:
             return await self._tasks(project)
@@ -254,17 +291,28 @@ class ProjectFlow:
 
     # --- pomocnicze ----------------------------------------------------------------
 
-    async def _stage(self, project: ProjectRow, run: StageFactory) -> StageResult:
+    async def _stage(self, project: ProjectRow, step: str, run: StageFactory) -> StageResult:
+        """Krok planisty z zapisem w dzienniku: `planning_step` + zdarzenie dla UI."""
+        project.planning_step = step
+        self.store.log(self.project_id, "planning_step", "planner", payload={"step": step})
         try:
             result = await run()
         except HarnessError as exc:
             result = StageResult(ok=False, problems=[f"agent niedostępny: {exc}"])
         project.planner_session_id = self.pipeline.session_id
+        project.planning_step = None
+        self.store.log(
+            self.project_id,
+            "planning_step_done",
+            "planner",
+            payload={"step": step, "ok": result.ok},
+        )
         return result
 
     def _block(self, project: ProjectRow, title: str, result: StageResult) -> FlowReply:
         message = f"{title}: " + "; ".join(result.problems[:5])
         project.planning_message = message
+        self.store.log(self.project_id, "planning_blocked", "planner", payload={"message": message})
         self.store.add_message(
             self.project_id,
             "system",
@@ -276,11 +324,14 @@ class ProjectFlow:
     def _open_gate(self, project: ProjectRow, gate: Gate, summary: str, prompt: str) -> FlowReply:
         project.gate = gate
         project.gate_summary = summary
+        self.store.log(self.project_id, "gate_opened", "system", payload={"gate": gate})
         self.store.add_message(self.project_id, "system", prompt)
         self.store.commit()
         return self._reply(prompt, gate=gate, gate_summary=summary)
 
     def _close_gate(self, project: ProjectRow) -> None:
+        if project.gate:
+            self.store.log(self.project_id, "gate_closed", "system", payload={"gate": project.gate})
         project.gate = None
         project.gate_summary = None
 

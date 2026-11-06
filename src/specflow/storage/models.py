@@ -40,6 +40,14 @@ class ProjectRow(Base):
     planning_message: Mapped[str | None] = mapped_column(default=None)
     """Planowanie utknęło (Awaiting input na poziomie projektu): co poszło nie tak."""
     feature_dir: Mapped[str | None] = mapped_column(default=None)
+    planning_step: Mapped[str | None] = mapped_column(String(20), default=None)
+    """Dziennik: krok planisty w toku (np. "specify"). Ustawione przy starcie kroku,
+    czyszczone po nim - po awarii wiemy, który krok powtórzyć (ADR-0008)."""
+
+    # --- praca w tle (M5) ---
+    run_state: Mapped[str] = mapped_column(String(20), default="idle")
+    """Stan docelowy orkiestratora: "idle" (przed budową / po), "running", "paused"
+    (użytkownik). Awaria agenta to osobne `paused_reason`."""
 
     tasks: Mapped[list["TaskRow"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="TaskRow.order_index"
@@ -154,4 +162,28 @@ class ChatMessageRow(Base):
     """"user", "assistant" albo "system"."""
     phase: Mapped[str] = mapped_column(String(20))
     text: Mapped[str]
+    command_id: Mapped[int | None] = mapped_column(default=None)
+    """Polecenie, które dodało wiadomość - ponowne wykonanie po awarii jej nie dubluje."""
     created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class CommandRow(Base):
+    """Skrzynka poleceń projektu (inbox): HTTP tylko dopisuje polecenia, a jedynym, kto
+    zmienia stan projektu, jest worker projektu. Polecenie jest oznaczane jako wykonane
+    dopiero po wykonaniu (at-least-once), więc po awarii wykonuje się ponownie (ADR-0008)."""
+
+    __tablename__ = "commands"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    kind: Mapped[str] = mapped_column(String(30))
+    """start / message / approve / answer / pause / resume."""
+    task_key: Mapped[str | None] = mapped_column(String(20), default=None)
+    text: Mapped[str | None] = mapped_column(default=None)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    """pending / done / failed."""
+    error: Mapped[str | None] = mapped_column(default=None)
+    attempts: Mapped[int] = mapped_column(default=0)
+    """Ile razy worker zaczął wykonywać polecenie. >1 = przerwane wcześniej (awaria)."""
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+    processed_at: Mapped[datetime | None] = mapped_column(default=None)
