@@ -11,7 +11,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from specflow.domain import Actor, TaskGraph, TaskStatus, transition
-from specflow.storage.models import DecisionRow, EventRow, ProjectRow, RunRow, TaskRow
+from specflow.domain.project_phase import ProjectPhase, advance_phase
+from specflow.storage.models import (
+    ChatMessageRow,
+    DecisionRow,
+    EventRow,
+    ProjectRow,
+    RunRow,
+    TaskRow,
+)
 
 
 class ProjectStoreError(Exception):
@@ -21,6 +29,10 @@ class ProjectStoreError(Exception):
 class ProjectStore:
     def __init__(self, session: Session) -> None:
         self.session = session
+
+    def commit(self) -> None:
+        """Zatwierdza transakcję. Wywołujący (orkiestrator, warstwa web) decyduje kiedy."""
+        self.session.commit()
 
     # --- projekty i import planu -------------------------------------------------
 
@@ -37,6 +49,7 @@ class ProjectStore:
             raise ProjectStoreError("Projekt ma już zaimportowany plan (przeplanowanie: F01).")
 
         order = graph.execution_order()
+        direct = graph.direct_deps()
         rows: list[TaskRow] = []
         for position, key in enumerate(order):
             spec = graph.tasks[key]
@@ -48,7 +61,7 @@ class ProjectStore:
                 parallel=spec.parallel,
                 is_test=spec.is_test,
                 files=list(spec.files),
-                depends_on=sorted(graph.deps[key]),
+                depends_on=sorted(direct[key]),
                 order_index=position,
                 status=TaskStatus.BACKLOG.value,
             )
@@ -250,6 +263,37 @@ class ProjectStore:
     def resume(self, project_id: int) -> None:
         self.get_project(project_id).paused_reason = None
         self._event(project_id, "project_resumed", Actor.USER)
+
+    def add_message(self, project_id: int, role: str, text: str) -> ChatMessageRow:
+        message = ChatMessageRow(
+            project_id=project_id, role=role, phase=self.get_project(project_id).phase, text=text
+        )
+        self.session.add(message)
+        self.session.flush()
+        return message
+
+    def messages(self, project_id: int) -> list[ChatMessageRow]:
+        return list(
+            self.session.scalars(
+                select(ChatMessageRow)
+                .where(ChatMessageRow.project_id == project_id)
+                .order_by(ChatMessageRow.id)
+            )
+        )
+
+    def set_phase(self, project_id: int, target: str) -> ProjectRow:
+        """Zmiana etapu projektu przez maszynę stanów etapów (z zapisem zdarzenia)."""
+        project = self.get_project(project_id)
+        current = ProjectPhase(project.phase)
+        advance_phase(current, ProjectPhase(target))
+        project.phase = target
+        self._event(
+            project_id,
+            "phase_changed",
+            Actor.SYSTEM,
+            payload={"from": current.value, "to": target},
+        )
+        return project
 
     def save_test_baseline(self, project_id: int, *, passing: set[str], known: set[str]) -> None:
         project = self.get_project(project_id)

@@ -111,3 +111,22 @@ def test_repair_prompt_lists_numbered_errors_for_the_model() -> None:
     assert "1. [ERROR] PLACEHOLDER" in prompt
     assert "zachowaj format Spec Kit" in prompt
     assert load_task_plan((FIXTURES / "todo_tasks.md").read_text()).report.as_repair_prompt() == ""
+
+
+def test_direct_deps_remove_transitive_edges_but_keep_readiness() -> None:
+    graph = graph_for((FIXTURES / "todo_tasks.md").read_text())
+    direct = graph.direct_deps()
+    assert direct["T002"] == {"T001"}
+    # T010 zależy od wszystkiego z faz przygotowawczych i od testów US1, ale bezpośrednio
+    # tylko od T009 (jawne depends on), które samo czeka na resztę.
+    assert direct["T010"] == {"T009"}
+    # Gotowość się nie zmienia: domknięcie przechodnie bezpośrednich = pełne zależności.
+    for task_id, deps in graph.deps.items():
+        closure: set[str] = set()
+        stack = list(direct[task_id])
+        while stack:
+            dep = stack.pop()
+            if dep not in closure:
+                closure.add(dep)
+                stack.extend(direct[dep])
+        assert closure == deps

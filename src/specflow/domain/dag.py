@@ -32,6 +32,20 @@ class TaskGraph(BaseModel):
     phase_rank: dict[int, int] = Field(default_factory=dict)
     """phase_index -> pozycja w harmonogramie (historyjki według priorytetu)."""
 
+    def direct_deps(self) -> dict[str, set[str]]:
+        """Redukcja przechodnia: tylko BEZPOŚREDNIE zależności (A→C usuwamy, gdy A→B→C).
+        Gotowość zadań się nie zmienia, a notatki przekazania w promptach pochodzą
+        tylko od zadań, na których praca faktycznie się opiera."""
+        ancestors = {task_id: _ancestors(task_id, self.deps) for task_id in self.deps}
+        return {
+            task_id: {
+                dep
+                for dep in deps
+                if not any(dep in ancestors[other] for other in deps if other != dep)
+            }
+            for task_id, deps in self.deps.items()
+        }
+
     def execution_order(self) -> list[str]:
         """Topologiczny porządek: z gotowych zadań najpierw faza o niższej randze,
         potem kolejność w pliku. Zakłada brak cykli (sprawdzone przy budowie)."""

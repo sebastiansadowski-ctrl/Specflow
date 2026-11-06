@@ -33,7 +33,7 @@ w kontenerze Docker, na planie ChatGPT. Spec Kit przypięty do konkretnej wersji
 | **M1 – Rdzeń domeny** | Model (Project, Task, Event), SQLite, maszyna stanów zadań z aktorami, parser `tasks.md` → DAG z walidacją (ADR-0004). Run dochodzi w M3, Artifact w M4, migracje Alembic najpóźniej w F04 | Testy jednostkowe na przykładowych `tasks.md` przechodzą |
 | **M2 – Harness i workspace** | Port `Harness` i słownik zdarzeń, raport agenta w JSON, profile uprawnień bez `ask`, adapter Mock (scenariusze), adapter OpenCode v2.2.5, menedżer workspace (`git init`, `specify init`, commit po zadaniu), obraz Docker (ADR-0005) | Mock w CI; OpenCode odpowiada lokalnie (nagranie zdarzeń) |
 | **M3 – Orkiestrator i weryfikacja** | Pętla orkiestratora (3 podejścia, Rework w tej samej sesji, Awaiting input z odpowiedzią lub wskazówką, gałęzie `attempt/`, pauza przy awarii), prompty z wersją, weryfikacja w sandboxie agenta (`/api/shell`): diff, pliki chronione, JUnit, regresje, TDD, checkpoint historyjki; tabela `runs` (ADR-0006). Strumień SSE do interfejsu: M5 | Pełny przebieg zadań na Mocku, wszystkie ścieżki statusów |
-| **M4 – Wywiad** | Etapy, checklisty kompletności, podsumowania do akceptacji, wywołania `/speckit.*` | Rozmowa daje kompletne artefakty (Mock, potem OpenCode) |
+| **M4 – Wywiad i planowanie** | Etapy projektu (maszyna faz), wywiad slot-filling z JSON-em tury i walidacją, konstytucja z domyślnych zasad + 2 pytania, bramki akceptacji (podsumowania składane przez kod), własny clarify przez znaczniki `[NEEDS CLARIFICATION]`, planista `/speckit.*` z kontrolami artefaktów, pętlą naprawczą `tasks.md` i `analyze` z jedną poprawką CRITICAL; F00 tylko Python (ADR-0007) | Rozmowa daje kompletne artefakty i zadania na tablicy (Mock w CI, potem OpenCode) |
 | **M5 – Interfejs** | Czat, kanban, podgląd artefaktów, log agenta, pasek etapów | Całość da się przeklikać w przeglądarce |
 | **M6 – End-to-end i wydanie** | `docker compose`, test E2E na Mocku w CI, instrukcja z OpenCode, scenariusz demo, tag `v0.0.0` | Kryteria akceptacji spełnione |
 
@@ -47,3 +47,10 @@ w kontenerze Docker, na planie ChatGPT. Spec Kit przypięty do konkretnej wersji
    („lista zadań z logowaniem”) z przechodzącymi testami.
 3. Każde zrobione zadanie ma swój commit; kanban odzwierciedla statusy na żywo.
 4. Instrukcja w README pozwala uruchomić całość od zera.
+
+## Pomysły na później
+
+- **Profile stosów technologicznych.** W F00 stos jest stały (Python 3.12, FastAPI + Jinja2,
+  SQLite, pytest). Później: kilka gotowych profili (np. Node/TypeScript, Django), które
+  użytkownik akceptuje albo wybiera na podstawie preferencji z wywiadu; każdy profil niesie
+  własne komendy weryfikacji i pliki chronione (zob. ADR-0006, ADR-0007).
