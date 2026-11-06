@@ -4,13 +4,14 @@ Każda zmiana statusu przechodzi przez maszynę stanów (kto może co zrobić) i
 zdarzenie. Po ukończeniu zadania system sam promuje zadania z Backlog do Ready.
 """
 
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from specflow.domain import Actor, TaskGraph, TaskStatus, transition
-from specflow.storage.models import EventRow, ProjectRow, TaskRow
+from specflow.storage.models import DecisionRow, EventRow, ProjectRow, RunRow, TaskRow
 
 
 class ProjectStoreError(Exception):
@@ -82,6 +83,10 @@ class ProjectStore:
             columns[TaskStatus(row.status)].append(row)
         return columns
 
+    def board_tasks(self, project_id: int) -> list[TaskRow]:
+        """Wszystkie zadania projektu w kolejności harmonogramu."""
+        return self._tasks(project_id)
+
     def events(self, project_id: int) -> list[EventRow]:
         return list(
             self.session.scalars(
@@ -105,7 +110,7 @@ class ProjectStore:
         transition(current, target, actor)  # rzuca InvalidTransitionError
 
         row.status = target.value
-        if current is TaskStatus.REWORK and target is TaskStatus.IN_PROGRESS:
+        if target is TaskStatus.IN_PROGRESS:
             row.attempts += 1
         payload = {"reason": reason} if reason else {}
         self._event(
@@ -132,6 +137,125 @@ class ProjectStore:
                     self.set_status(project_id, row.key, TaskStatus.READY, Actor.SYSTEM)
                 )
         return promoted
+
+    # --- Awaiting input: pytania agenta, wyczerpane próby, odpowiedzi ------------
+
+    def request_input(
+        self,
+        project_id: int,
+        key: str,
+        actor: Actor,
+        *,
+        reason: str,
+        message: str,
+    ) -> TaskRow:
+        """Przenosi zadanie do Awaiting input z powodem i treścią widoczną dla użytkownika."""
+        row = self.set_status(project_id, key, TaskStatus.AWAITING_INPUT, actor, reason=message)
+        row.awaiting_reason = reason
+        row.awaiting_message = message
+        self.session.flush()
+        return row
+
+    def answer(self, project_id: int, key: str, text: str) -> TaskRow:
+        """Odpowiedź (na pytanie agenta) albo wskazówka (po wyczerpaniu prób) od użytkownika.
+
+        - pytanie: ta sama sesja dostanie odpowiedź, licznik prób bez zmian;
+        - wyczerpane próby: nowa sesja, licznik prób od zera.
+        Każda odpowiedź zapisuje się jako decyzja projektu.
+        """
+        if not text.strip():
+            raise ProjectStoreError("Odpowiedź nie może być pusta.")
+        row = self.get_task(project_id, key)
+        if TaskStatus(row.status) is not TaskStatus.AWAITING_INPUT:
+            raise ProjectStoreError(f"Zadanie {key} nie czeka na odpowiedź.")
+        exhausted = row.awaiting_reason == "attempts_exhausted"
+        self.session.add(
+            DecisionRow(
+                project_id=project_id,
+                task_key=key,
+                kind="hint" if exhausted else "answer",
+                question=row.awaiting_message,
+                text=text.strip(),
+            )
+        )
+        row.pending_input = text.strip()
+        if exhausted:
+            row.attempts = 0
+            row.session_id = None
+        row.awaiting_reason = None
+        row.awaiting_message = None
+        return self.set_status(project_id, key, TaskStatus.READY, Actor.USER, reason="odpowiedź")
+
+    def decisions(self, project_id: int) -> list[DecisionRow]:
+        return list(
+            self.session.scalars(
+                select(DecisionRow)
+                .where(DecisionRow.project_id == project_id)
+                .order_by(DecisionRow.id)
+            )
+        )
+
+    # --- próby (Run) -------------------------------------------------------------
+
+    def start_run(
+        self,
+        project_id: int,
+        key: str,
+        *,
+        session_id: str,
+        profile: str,
+        prompt_version: str,
+        base_sha: str | None,
+    ) -> RunRow:
+        task = self.get_task(project_id, key)
+        run = RunRow(
+            project_id=project_id,
+            task_key=key,
+            attempt=task.attempts,
+            session_id=session_id,
+            profile=profile,
+            prompt_version=prompt_version,
+            base_sha=base_sha,
+        )
+        self.session.add(run)
+        self.session.flush()
+        return run
+
+    def finish_run(self, run: RunRow, *, outcome: str, **fields: Any) -> RunRow:
+        for name, value in fields.items():
+            setattr(run, name, value)
+        run.outcome = outcome
+        run.finished_at = datetime.now(UTC)
+        self.session.flush()
+        return run
+
+    def runs(self, project_id: int, key: str | None = None) -> list[RunRow]:
+        query = select(RunRow).where(RunRow.project_id == project_id)
+        if key:
+            query = query.where(RunRow.task_key == key)
+        return list(self.session.scalars(query.order_by(RunRow.id)))
+
+    # --- projekt -----------------------------------------------------------------
+
+    def get_project(self, project_id: int) -> ProjectRow:
+        project = self.session.get(ProjectRow, project_id)
+        if project is None:
+            raise ProjectStoreError(f"Brak projektu {project_id}.")
+        return project
+
+    def pause(self, project_id: int, reason: str) -> None:
+        self.get_project(project_id).paused_reason = reason
+        self._event(project_id, "project_paused", Actor.SYSTEM, payload={"reason": reason})
+
+    def resume(self, project_id: int) -> None:
+        self.get_project(project_id).paused_reason = None
+        self._event(project_id, "project_resumed", Actor.USER)
+
+    def save_test_baseline(self, project_id: int, *, passing: set[str], known: set[str]) -> None:
+        project = self.get_project(project_id)
+        project.passing_tests = sorted(passing)
+        project.known_tests = sorted(known)
+        self.session.flush()
 
     # --- pomocnicze --------------------------------------------------------------
 

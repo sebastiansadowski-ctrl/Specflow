@@ -7,6 +7,7 @@ from pathlib import Path, PurePosixPath
 
 from specflow.harness.base import (
     CommandPrompt,
+    CommandResult,
     HarnessError,
     Prompt,
     Session,
@@ -17,6 +18,8 @@ from specflow.harness.events import AgentEvent, FileChanged, RunFinished, build_
 from specflow.harness.opencode.client import OpenCodeClient
 from specflow.harness.opencode.mapping import SUBSCRIBED_TYPES, OpenCodeEventMapper
 from specflow.harness.permissions import rules_for
+
+_MAX_OUTPUT = 200_000
 
 
 class OpenCodeHarness:
@@ -35,6 +38,7 @@ class OpenCodeHarness:
         self.client = client
         self.host_root = host_root.resolve()
         self.container_root = PurePosixPath(container_root)
+        self.poll_interval_s = 0.5
 
     def container_path(self, workdir: Path) -> str:
         try:
@@ -105,6 +109,39 @@ class OpenCodeHarness:
             mapper.last_text,
             expect_report=expect_report,
             error=mapper.terminal_error,
+        )
+
+    async def run_command(self, workdir: Path, command: str, *, timeout_s: float) -> CommandResult:
+        """`POST /api/shell`: komenda w kontenerze agenta, bez modelu. Odpytujemy o stan,
+        potem czytamy wynik stronami (zachowujemy końcówkę - tam są błędy)."""
+        directory = self.container_path(workdir)
+        info = await self.client.shell_create(
+            directory=directory, command=command, timeout_ms=int(timeout_s * 1000)
+        )
+        shell_id = str(info["id"])
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_s + 10  # zapas na własny timeout OpenCode
+        while info.get("status") == "running":
+            if loop.time() > deadline:
+                return CommandResult(exit_code=None, output="", timed_out=True)
+            await asyncio.sleep(self.poll_interval_s)
+            info = await self.client.shell_get(shell_id, directory=directory)
+
+        output, cursor = "", 0
+        while True:
+            page = await self.client.shell_output(shell_id, directory=directory, cursor=cursor)
+            output = (output + str(page.get("output", "")))[-_MAX_OUTPUT:]
+            new_cursor = int(page.get("cursor", cursor))
+            if new_cursor <= cursor or new_cursor >= int(page.get("size", 0)):
+                break
+            cursor = new_cursor
+
+        status = info.get("status")
+        exit_code = info.get("exit")
+        return CommandResult(
+            exit_code=int(exit_code) if status == "exited" and exit_code is not None else None,
+            output=output,
+            timed_out=status == "timeout",
         )
 
     async def abort(self, session: Session) -> None:

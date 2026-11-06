@@ -7,6 +7,7 @@ Port `Harness` + nasz słownik zdarzeń. Implementacje:
 
 from specflow.harness.base import (
     CommandPrompt,
+    CommandResult,
     Harness,
     HarnessError,
     Prompt,
@@ -34,6 +35,7 @@ __all__ = [
     "AgentProfile",
     "AgentReport",
     "CommandPrompt",
+    "CommandResult",
     "FileChanged",
     "Harness",
     "HarnessError",

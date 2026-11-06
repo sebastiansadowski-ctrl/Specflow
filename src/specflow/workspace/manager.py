@@ -58,6 +58,8 @@ class Workspace:
         workspace._git("init", "-q", "-b", "main")
         workspace._git("config", "user.name", "Specflow Agent")
         workspace._git("config", "user.email", "agent@specflow.local")
+        # Katalog roboczy Specflow (np. wyniki JUnit z weryfikacji) nie trafia do diffu.
+        (path / ".gitignore").write_text(".specflow/\n.venv/\n__pycache__/\n.pytest_cache/\n")
         return workspace
 
     def init_spec_kit(self, integration: str = "opencode") -> None:
@@ -104,6 +106,30 @@ class Workspace:
 
     def commit_task(self, key: str, title: str) -> str | None:
         return self.commit(f"{key}: {title}")
+
+    def diff(self, since: str | None, path: str) -> str:
+        """Diff jednego pliku względem commita `since` (albo HEAD); pusty, gdy brak historii."""
+        if not self.head():
+            return ""
+        return self._git("diff", since or "HEAD", "--", path)
+
+    def files(self) -> list[str]:
+        """Pliki projektu znane gitowi (śledzone i nowe, z pominięciem ignorowanych)."""
+        listed = self._git("ls-files", "--cached", "--others", "--exclude-standard")
+        return sorted({line for line in listed.splitlines() if line})
+
+    def save_attempt(self, branch: str, message: str) -> str | None:
+        """Zapisuje bieżące (nieudane) zmiany na osobnej gałęzi i wraca na gałąź główną
+        w stanie sprzed próby. Zwraca SHA zapisu albo None, gdy nie było zmian."""
+        if not self._git("status", "--porcelain").strip():
+            return None
+        current = self._git("rev-parse", "--abbrev-ref", "HEAD").strip()
+        self._git("checkout", "-q", "-b", branch)
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", message, f"--author={AGENT_AUTHOR}")
+        sha = self.head()
+        self._git("checkout", "-q", current)
+        return sha
 
     def reset_to(self, sha: str) -> None:
         """Cofa wszystkie zmiany do commita `sha` (np. przed ponowną próbą)."""

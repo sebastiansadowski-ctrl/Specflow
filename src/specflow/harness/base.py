@@ -42,6 +42,16 @@ class CommandPrompt(BaseModel):
 Prompt = TextPrompt | CommandPrompt
 
 
+class CommandResult(BaseModel):
+    """Wynik komendy uruchomionej w środowisku agenta BEZ udziału modelu (weryfikacja)."""
+
+    exit_code: int | None
+    """None, gdy komenda nie zakończyła się sama (timeout, zabita)."""
+    output: str
+    """Połączone stdout i stderr (może być przycięte)."""
+    timed_out: bool = False
+
+
 class Harness(Protocol):
     name: str
 
@@ -60,6 +70,11 @@ class Harness(Protocol):
         `expect_report`: czy oczekujemy raportu końcowego w JSON (zadania tak,
         komendy Spec Kit nie).
         """
+        ...
+
+    async def run_command(self, workdir: Path, command: str, *, timeout_s: float) -> CommandResult:
+        """Deterministyczna komenda w środowisku agenta (sandbox), np. testy projektu.
+        Nigdy nie uruchamiamy kodu agenta tam, gdzie działa Specflow (ADR-0006)."""
         ...
 
     async def abort(self, session: Session) -> None: ...
