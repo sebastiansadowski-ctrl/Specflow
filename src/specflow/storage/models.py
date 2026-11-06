@@ -28,6 +28,19 @@ class ProjectRow(Base):
     known_tests: Mapped[list[str]] = mapped_column(default=list)
     """Wszystkie testy zebrane po ostatnim udanym zadaniu - kontrola "liczba testów nie spadła"."""
 
+    # --- wywiad i planowanie (M4) ---
+    phase: Mapped[str] = mapped_column(String(20), default="constitution")
+    interview_state: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    """Stan slotów wywiadu (InterviewState) - źródło prawdy, niezależne od historii sesji."""
+    interviewer_session_id: Mapped[str | None] = mapped_column(default=None)
+    planner_session_id: Mapped[str | None] = mapped_column(default=None)
+    gate: Mapped[str | None] = mapped_column(String(20), default=None)
+    """Otwarta bramka akceptacji: "spec" albo "plan"."""
+    gate_summary: Mapped[str | None] = mapped_column(default=None)
+    planning_message: Mapped[str | None] = mapped_column(default=None)
+    """Planowanie utknęło (Awaiting input na poziomie projektu): co poszło nie tak."""
+    feature_dir: Mapped[str | None] = mapped_column(default=None)
+
     tasks: Mapped[list["TaskRow"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", order_by="TaskRow.order_index"
     )
@@ -127,4 +140,18 @@ class EventRow(Base):
     from_status: Mapped[str | None] = mapped_column(String(20))
     to_status: Mapped[str | None] = mapped_column(String(20))
     payload: Mapped[dict[str, Any]] = mapped_column(default=dict)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
+class ChatMessageRow(Base):
+    """Wiadomość w czacie projektu (wywiad, komunikaty systemu) - do wyświetlenia w UI."""
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"))
+    role: Mapped[str] = mapped_column(String(20))
+    """"user", "assistant" albo "system"."""
+    phase: Mapped[str] = mapped_column(String(20))
+    text: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(default=_now)

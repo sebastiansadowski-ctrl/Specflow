@@ -6,3 +6,6 @@
   przykładowe zadania z szablonu.
 - `todo_tasks.md`: poprawny plan dla aplikacji demo („lista zadań z logowaniem”),
   napisany w formacie Spec Kit.
+- `speckit_constitution_template.md`, `speckit_spec_template.md`: szablony z Spec Kit
+  **v1.3.0** (commit `34a0d38`, licencja MIT). Kontrole artefaktów muszą je odrzucić
+  (nieuzupełnione pola, znaczniki `[NEEDS CLARIFICATION]`).
