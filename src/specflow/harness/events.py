@@ -38,6 +38,8 @@ class ToolCall(BaseModel):
     call_id: str
     tool: str
     summary: str
+    target: str | None = None
+    """Czego dotyczy wywołanie: ścieżka pliku, komenda albo wzorzec (do narracji dla UI)."""
 
 
 class ToolResult(BaseModel):

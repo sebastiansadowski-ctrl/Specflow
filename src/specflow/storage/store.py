@@ -4,6 +4,7 @@ Każda zmiana statusu przechodzi przez maszynę stanów (kto może co zrobić) i
 zdarzenie. Po ukończeniu zadania system sam promuje zadania z Backlog do Ready.
 """
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,6 +15,7 @@ from specflow.domain import Actor, TaskGraph, TaskStatus, transition
 from specflow.domain.project_phase import ProjectPhase, advance_phase
 from specflow.storage.models import (
     ChatMessageRow,
+    CommandRow,
     DecisionRow,
     EventRow,
     ProjectRow,
@@ -21,18 +23,30 @@ from specflow.storage.models import (
     TaskRow,
 )
 
+RUN_STATES = frozenset({"idle", "running", "paused"})
+COMMAND_KINDS = frozenset({"start", "message", "approve", "answer", "pause", "resume"})
+CHAT_COMMANDS = frozenset({"start", "message", "approve"})
+"""Polecenia czatu: wykonują turę modelu, więc naraz może czekać tylko jedno."""
+
 
 class ProjectStoreError(Exception):
     pass
 
 
 class ProjectStore:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, on_commit: Callable[[], None] | None = None) -> None:
         self.session = session
+        self.on_commit = on_commit
+        """Wywoływane po każdym commicie - np. powiadomienie szyny zdarzeń (SSE)."""
 
     def commit(self) -> None:
         """Zatwierdza transakcję. Wywołujący (orkiestrator, warstwa web) decyduje kiedy."""
         self.session.commit()
+        if self.on_commit is not None:
+            self.on_commit()
+
+    def projects(self) -> list[ProjectRow]:
+        return list(self.session.scalars(select(ProjectRow).order_by(ProjectRow.id)))
 
     # --- projekty i import planu -------------------------------------------------
 
@@ -100,12 +114,30 @@ class ProjectStore:
         """Wszystkie zadania projektu w kolejności harmonogramu."""
         return self._tasks(project_id)
 
-    def events(self, project_id: int) -> list[EventRow]:
-        return list(
-            self.session.scalars(
-                select(EventRow).where(EventRow.project_id == project_id).order_by(EventRow.id)
-            )
+    def events(
+        self, project_id: int, *, after: int = 0, limit: int | None = None
+    ) -> list[EventRow]:
+        """Zdarzenia projektu po `after` (id) - nadrabianie strumienia SSE po Last-Event-ID."""
+        query = (
+            select(EventRow)
+            .where(EventRow.project_id == project_id, EventRow.id > after)
+            .order_by(EventRow.id)
         )
+        if limit is not None:
+            query = query.limit(limit)
+        return list(self.session.scalars(query))
+
+    def log(
+        self,
+        project_id: int,
+        type_: str,
+        actor: Actor | str,
+        *,
+        task_key: str | None = None,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Dopisuje zdarzenie do dziennika (np. krok planisty, zdarzenie agenta)."""
+        self._event(project_id, type_, actor, task_key=task_key, payload=payload)
 
     # --- zmiany statusu ----------------------------------------------------------
 
@@ -264,12 +296,36 @@ class ProjectStore:
         self.get_project(project_id).paused_reason = None
         self._event(project_id, "project_resumed", Actor.USER)
 
-    def add_message(self, project_id: int, role: str, text: str) -> ChatMessageRow:
+    def add_message(
+        self, project_id: int, role: str, text: str, *, command_id: int | None = None
+    ) -> ChatMessageRow:
+        """Dodaje wiadomość czatu. Z `command_id` jest idempotentne: ponowne wykonanie
+        polecenia po awarii zwraca istniejącą wiadomość zamiast dodawać drugą."""
+        if command_id is not None:
+            existing = self.session.scalars(
+                select(ChatMessageRow).where(
+                    ChatMessageRow.project_id == project_id,
+                    ChatMessageRow.command_id == command_id,
+                    ChatMessageRow.role == role,
+                )
+            ).first()
+            if existing is not None:
+                return existing
         message = ChatMessageRow(
-            project_id=project_id, role=role, phase=self.get_project(project_id).phase, text=text
+            project_id=project_id,
+            role=role,
+            phase=self.get_project(project_id).phase,
+            text=text,
+            command_id=command_id,
         )
         self.session.add(message)
         self.session.flush()
+        self._event(
+            project_id,
+            "chat_message",
+            Actor.SYSTEM,
+            payload={"message_id": message.id, "role": role, "text": text},
+        )
         return message
 
     def messages(self, project_id: int) -> list[ChatMessageRow]:
@@ -280,6 +336,72 @@ class ProjectStore:
                 .order_by(ChatMessageRow.id)
             )
         )
+
+    def set_run_state(self, project_id: int, state: str) -> ProjectRow:
+        """Stan docelowy orkiestratora: idle / running / paused (przycisk użytkownika)."""
+        if state not in RUN_STATES:
+            raise ProjectStoreError(f"Nieznany stan pracy: {state}.")
+        project = self.get_project(project_id)
+        if project.run_state != state:
+            project.run_state = state
+            self._event(project_id, "run_state_changed", Actor.SYSTEM, payload={"state": state})
+        return project
+
+    # --- skrzynka poleceń (inbox) ------------------------------------------------
+
+    def enqueue(
+        self,
+        project_id: int,
+        kind: str,
+        *,
+        task_key: str | None = None,
+        text: str | None = None,
+    ) -> CommandRow:
+        if kind not in COMMAND_KINDS:
+            raise ProjectStoreError(f"Nieznane polecenie: {kind}.")
+        self.get_project(project_id)
+        command = CommandRow(project_id=project_id, kind=kind, task_key=task_key, text=text)
+        self.session.add(command)
+        self.session.flush()
+        self._event(
+            project_id,
+            "command_queued",
+            Actor.USER,
+            task_key=task_key,
+            payload={"command_id": command.id, "kind": kind},
+        )
+        return command
+
+    def pending_commands(
+        self, project_id: int, kinds: frozenset[str] | None = None
+    ) -> list[CommandRow]:
+        query = select(CommandRow).where(
+            CommandRow.project_id == project_id, CommandRow.status == "pending"
+        )
+        if kinds is not None:
+            query = query.where(CommandRow.kind.in_(kinds))
+        return list(self.session.scalars(query.order_by(CommandRow.id)))
+
+    def begin_command(self, command: CommandRow) -> bool:
+        """Oznacza początek wykonania. Zwraca True, gdy polecenie było już zaczęte
+        (poprzednie wykonanie przerwała awaria) - wtedy worker wznawia zamiast powtarzać."""
+        interrupted = command.attempts > 0
+        command.attempts += 1
+        self.session.flush()
+        return interrupted
+
+    def finish_command(self, command: CommandRow, *, error: str | None = None) -> CommandRow:
+        command.status = "failed" if error else "done"
+        command.error = error
+        command.processed_at = datetime.now(UTC)
+        self._event(
+            command.project_id,
+            "command_failed" if error else "command_done",
+            Actor.SYSTEM,
+            task_key=command.task_key,
+            payload={"command_id": command.id, "kind": command.kind, "error": error},
+        )
+        return command
 
     def set_phase(self, project_id: int, target: str) -> ProjectRow:
         """Zmiana etapu projektu przez maszynę stanów etapów (z zapisem zdarzenia)."""
@@ -316,7 +438,7 @@ class ProjectStore:
         self,
         project_id: int,
         type_: str,
-        actor: Actor,
+        actor: Actor | str,
         *,
         task_key: str | None = None,
         from_status: TaskStatus | None = None,
@@ -328,7 +450,7 @@ class ProjectStore:
                 project_id=project_id,
                 task_key=task_key,
                 type=type_,
-                actor=actor.value,
+                actor=actor.value if isinstance(actor, Actor) else actor,
                 from_status=from_status.value if from_status else None,
                 to_status=to_status.value if to_status else None,
                 payload=payload or {},

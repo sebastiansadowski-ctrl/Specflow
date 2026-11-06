@@ -11,6 +11,8 @@ flowchart TB
   end
 
   subgraph BE["Backend: nasz rdzeń (FastAPI)"]
+    inbox["API + skrzynka poleceń, SSE"]
+    worker["Worker projektu (runtime)"]
     interview["Silnik wywiadu"]
     domain["Model domeny: zadania i DAG"]
     orch["Orkiestrator: maszyna stanów"]
@@ -102,6 +104,23 @@ flowchart LR
   classDef status fill:#F1EFE8,stroke:#5F5E5A,color:#444441
 ```
 
+## Praca w tle i postęp na żywo (ADR-0008)
+
+```
+przeglądarka ──POST──► API ──► tabela commands (inbox)
+                                   │
+                         worker projektu (jedyny, kto zmienia stan)
+                           ├─ polecenia czatu → ProjectFlow (wywiad, planista)
+                           └─ budowa → Orkiestrator (jedno zadanie na krok)
+                                   │ każdy krok i każde zdarzenie agenta
+                                   ▼
+                             tabela events ──► szyna w pamięci ──► SSE ──► przeglądarka
+                                                (powiadomienie)     (czyta z bazy po Last-Event-ID)
+```
+
+Przy starcie Specflow uzgadnia stan (przerwane zadania wracają do Ready, przerwane polecenia
+są wznawiane). Narrację dla użytkownika składa kod (`web/narration.py`), nie model.
+
 ## Co jest AI, a co kodem
 
 | Element | Kto | Wynik |
@@ -110,6 +129,7 @@ flowchart LR
 | Agent planisty | LLM w harnessie | `plan.md`, `data-model.md`, `tasks.md` |
 | Builder DAG | **kod** | Graf zadań w bazie, po walidacji |
 | Orkiestrator | **kod** | Kolejność, limity, statusy |
+| Worker, odzyskiwanie po awarii, narracja postępu | **kod** | Polecenia po kolei, wznowienia, opis zdarzeń dla użytkownika |
 | Agent wykonawczy | LLM w harnessie | Kod dla jednego zadania |
 | Testy | LLM, w **osobnym zadaniu przed implementacją**, na podstawie kryteriów akceptacji | Pliki testów |
 | Weryfikacja | **kod** (build, typy, lint, testy), potem LLM-recenzent (F01) | OK / Rework / Awaiting input |

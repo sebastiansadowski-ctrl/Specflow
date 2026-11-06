@@ -106,11 +106,15 @@ class MockHarness:
         self,
         default: Scenario | None = None,
         by_match: dict[str, Scenario | list[Scenario]] | None = None,
+        *,
+        step_delay_s: float = 0.0,
     ) -> None:
         """`by_match`: fragment promptu -> scenariusz albo LISTA scenariuszy odtwarzanych
         po kolei przy kolejnych wywołaniach (np. porażka, potem sukces po Rework).
         Ostatni element listy się powtarza."""
         self.default = default or phantom_done()
+        self.step_delay_s = step_delay_s
+        """Przerwa między zdarzeniami - w trybie demo widać postęp na żywo."""
         self.by_match = by_match or {}
         self.commands: list[str] = []
         self.prompts: list[tuple[str, Prompt]] = []
@@ -123,7 +127,7 @@ class MockHarness:
         self._sessions[session.id] = session
         return session
 
-    def _pick(self, prompt: Prompt) -> Scenario:
+    def _pick(self, prompt: Prompt, session: Session) -> Scenario:
         text = (
             prompt.text if isinstance(prompt, TextPrompt) else f"/{prompt.name} {prompt.arguments}"
         )
@@ -143,7 +147,7 @@ class MockHarness:
         expect_report: bool = True,
     ) -> AsyncIterator[AgentEvent]:
         self.prompts.append((session.id, prompt))
-        scenario = self._pick(prompt)
+        scenario = self._pick(prompt, session)
         label = prompt.name if isinstance(prompt, CommandPrompt) else "zadanie"
         yield AgentMessage(text=f"[mock:{scenario.name}] Pracuję nad: {label}")
 
@@ -160,13 +164,17 @@ class MockHarness:
 
         for n, (relative, content) in enumerate(scenario.files.items(), start=1):
             call_id = f"call-{n}"
-            yield ToolCall(call_id=call_id, tool="edit", summary=f"edytuję {relative}")
+            await self._pause()
+            yield ToolCall(
+                call_id=call_id, tool="edit", summary=f"edit {relative}", target=relative
+            )
             target = session.spec.workdir / relative
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(content)
             yield ToolResult(call_id=call_id, tool="edit", ok=True)
             yield FileChanged(path=relative)
 
+        await self._pause()
         yield Usage(input_tokens=1000, output_tokens=200, cost_usd=0.0)
 
         final_text = scenario.final_text
@@ -175,6 +183,10 @@ class MockHarness:
         final_text = final_text or ""
         yield AgentMessage(text=final_text)
         yield build_run_finished("completed", final_text, expect_report=expect_report)
+
+    async def _pause(self) -> None:
+        if self.step_delay_s:
+            await asyncio.sleep(self.step_delay_s)
 
     async def run_command(self, workdir: Path, command: str, *, timeout_s: float) -> CommandResult:
         """Mock uruchamia komendy naprawdę (podproces w katalogu projektu), żeby testy

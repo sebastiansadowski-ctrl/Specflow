@@ -15,7 +15,7 @@ def test_tool_lifecycle_maps_to_call_result_and_file_change() -> None:
     mapper = OpenCodeEventMapper(SID)
     assert mapper.map(ev("session.tool.input.started", id="c1", name="edit")) == []
     [call] = mapper.map(ev("session.tool.called", id="c1", input={"filePath": "src/a.py"}))
-    assert call == ToolCall(call_id="c1", tool="edit", summary="edit src/a.py")
+    assert call == ToolCall(call_id="c1", tool="edit", summary="edit src/a.py", target="src/a.py")
     result, changed = mapper.map(ev("session.tool.success", id="c1", content=[{}]))
     assert result == ToolResult(call_id="c1", tool="edit", ok=True)
     assert changed == FileChanged(path="src/a.py")
@@ -26,6 +26,7 @@ def test_bash_call_summary_and_failure() -> None:
     mapper.map(ev("session.tool.input.started", id="c2", name="bash"))
     [call] = mapper.map(ev("session.tool.called", id="c2", input={"command": "uv run pytest"}))
     assert isinstance(call, ToolCall) and call.summary == "bash: uv run pytest"
+    assert call.target == "uv run pytest"
     [failed] = mapper.map(ev("session.tool.failed", id="c2", error={"message": "exit 1"}))
     assert failed == ToolResult(call_id="c2", tool="bash", ok=False, summary="exit 1")
 

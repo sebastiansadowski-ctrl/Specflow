@@ -46,14 +46,20 @@ def _short(value: object) -> str:
 
 
 def _describe(tool: str, args: dict[str, Any]) -> str:
+    target = _target(args)
+    if target is None:
+        return tool
+    return f"{tool}: {target}" if "command" in args else f"{tool} {target}"
+
+
+def _target(args: dict[str, Any]) -> str | None:
     for key in _PATH_KEYS:
         if key in args:
-            return f"{tool} {args[key]}"
-    if "command" in args:
-        return f"{tool}: {_short(args['command'])}"
-    if "pattern" in args:
-        return f"{tool} {_short(args['pattern'])}"
-    return tool
+            return _short(args[key])
+    for key in ("command", "pattern"):
+        if key in args:
+            return _short(args[key])
+    return None
 
 
 def _as_dict(value: object) -> dict[str, Any]:
@@ -94,7 +100,14 @@ class OpenCodeEventMapper:
                 args = _as_dict(data.get("input"))
                 tool = self.tool_names.get(call_id, "tool")
                 self.tool_inputs[call_id] = args
-                return [ToolCall(call_id=call_id, tool=tool, summary=_describe(tool, args))]
+                return [
+                    ToolCall(
+                        call_id=call_id,
+                        tool=tool,
+                        summary=_describe(tool, args),
+                        target=_target(args),
+                    )
+                ]
             case "session.tool.success":
                 tool = self.tool_names.get(call_id, "tool")
                 events: list[AgentEvent] = [ToolResult(call_id=call_id, tool=tool, ok=True)]

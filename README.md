@@ -23,7 +23,20 @@ i weryfikuje wynik testami.
 
 ```bash
 uv sync
-uv run specflow            # http://127.0.0.1:8000
+uv run specflow serve --harness mock        # demo bez modelu: http://127.0.0.1:8000
+uv run specflow serve --harness opencode    # prawdziwy agent (OpenCode z docker/)
+```
+
+Ustawienia (priorytet: argumenty > zmienne `SPECFLOW_*` > plik `.env` > domyślne) są opisane
+w `src/specflow/settings.py`; przykład w `.env.example`. Dane (baza SQLite, workspace'y
+projektów) trafiają do `var/`. W trybie `mock` odpowiedzi asystenta i praca agenta są
+nagrane (scenariusz „lista zadań”), ale testy i weryfikacja działają naprawdę.
+
+Szybki test API:
+
+```bash
+curl -X POST localhost:8000/api/projects -H 'content-type: application/json' -d '{"name":"Demo"}'
+curl -N localhost:8000/api/projects/1/events     # zdarzenia na żywo (SSE)
 ```
 
 ## Praca deweloperska

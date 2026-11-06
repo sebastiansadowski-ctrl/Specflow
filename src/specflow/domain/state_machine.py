@@ -35,6 +35,9 @@ TRANSITIONS: dict[tuple[TaskStatus, TaskStatus], frozenset[Actor]] = {
     (S.IN_PROGRESS, S.AWAITING_INPUT): frozenset({Actor.ORCHESTRATOR}),
     # Awaria infrastruktury (agent niedostępny): zadanie wraca do kolejki, bez oceny pracy.
     (S.IN_PROGRESS, S.READY): frozenset({Actor.ORCHESTRATOR}),
+    # Odzyskiwanie po restarcie/awarii Specflow (ADR-0008): przerwana praca wraca do kolejki.
+    (S.VERIFICATION, S.READY): frozenset({Actor.ORCHESTRATOR}),
+    (S.REWORK, S.READY): frozenset({Actor.ORCHESTRATOR}),
     (S.VERIFICATION, S.DONE): frozenset({Actor.VERIFICATION}),
     (S.VERIFICATION, S.REWORK): frozenset({Actor.VERIFICATION}),
     (S.VERIFICATION, S.AWAITING_INPUT): frozenset({Actor.VERIFICATION}),
