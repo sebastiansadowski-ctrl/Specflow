@@ -7,37 +7,34 @@ Zasady warstwy web (ADR-0008):
 - Treści od modelu renderujemy bezpiecznie, a nagłówek CSP jest drugą warstwą obrony.
 """
 
-import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from specflow import __version__
 from specflow.bootstrap import build_runtime
-from specflow.domain import KANBAN_COLUMNS, TaskStatus
+from specflow.domain import KANBAN_COLUMNS
 from specflow.domain.project_phase import PHASE_LABELS, ProjectPhase
-from specflow.harness import demo
 from specflow.interview import InterviewState
 from specflow.interview.slots import progress
 from specflow.runtime import Runtime, Supervisor
 from specflow.settings import Settings
 from specflow.storage import CHAT_COMMANDS, ProjectRow, ProjectStore, ProjectStoreError
 from specflow.web.artifacts import ArtifactError, list_artifacts, read_artifact
+from specflow.web.commands import BUSY, create_project, submit
 from specflow.web.markdown import render_markdown
 from specflow.web.sse import event_stream, parse_last_event_id
-from specflow.workspace import Workspace
+from specflow.web.views import router as views_router
 
-__all__ = ["KANBAN_COLUMNS", "create_app"]
+__all__ = ["BUSY", "KANBAN_COLUMNS", "create_app"]
 
 WEB_DIR = Path(__file__).parent
-templates = Jinja2Templates(directory=WEB_DIR / "templates")
 
 CSP = "; ".join(
     [
@@ -58,7 +55,6 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
 }
-BUSY = "Poczekaj chwilę, kończę poprzednią odpowiedź."
 
 
 class CreateProject(BaseModel):
@@ -91,7 +87,9 @@ def create_app(
     app.state.settings = settings
     app.state.runtime = rt
     app.state.supervisor = supervisor
+    app.state.start_workers = start_workers
     app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
+    app.include_router(views_router)
 
     @app.middleware("http")
     async def security_headers(
@@ -112,15 +110,7 @@ def create_app(
             raise HTTPException(404, str(exc)) from exc
 
     def enqueue(project_id: int, kind: str, **fields: Any) -> dict[str, Any]:
-        with rt.sessions() as session:
-            store = store_for(session, project_id)
-            project = project_or_404(store, project_id)
-            _check_command(store, project, kind, fields.get("task_key"))
-            command = store.enqueue(project_id, kind, **fields)
-            store.commit()
-            if start_workers:
-                supervisor.ensure_worker(project_id)
-            return {"command_id": command.id, "status": "queued"}
+        return {"command_id": submit(app, project_id, kind, **fields), "status": "queued"}
 
     # --- strony --------------------------------------------------------------------
 
@@ -128,36 +118,11 @@ def create_app(
     async def health() -> dict[str, str]:
         return {"status": "ok", "version": __version__, "harness": rt.harness.name}
 
-    @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request,
-            "index.html",
-            {
-                "version": __version__,
-                "columns": [(status.value, label) for status, label in KANBAN_COLUMNS],
-            },
-        )
-
     # --- projekty ------------------------------------------------------------------
 
     @app.post("/api/projects", status_code=201)
-    async def create_project(body: CreateProject) -> dict[str, Any]:
-        with rt.sessions() as session:
-            store = store_for(session, 0)
-            project = store.create_project(body.name.strip())
-            store.commit()
-            workspace = Workspace.create(rt.projects_dir, project.id, project.name)
-            if settings.should_init_spec_kit():
-                await asyncio.to_thread(workspace.init_spec_kit)
-            elif settings.harness == "mock":
-                demo.prepare_workspace(workspace)
-            store.enqueue(project.id, "start")
-            store.commit()
-            project_id = project.id
-        if start_workers:
-            supervisor.ensure_worker(project_id)
-        return {"id": project_id}
+    async def create_project_api(body: CreateProject) -> dict[str, Any]:
+        return {"id": await create_project(app, body.name)}
 
     @app.get("/api/projects")
     async def projects() -> list[dict[str, Any]]:
@@ -269,24 +234,6 @@ def create_app(
                 raise HTTPException(404, str(exc)) from exc
 
     return app
-
-
-def _check_command(store: ProjectStore, project: ProjectRow, kind: str, key: str | None) -> None:
-    """Szybka odpowiedź 409 dla poleceń, które na pewno się nie udadzą. Ostateczną decyzję
-    i tak podejmuje worker (stan mógł się zmienić, zanim polecenie zostanie wykonane)."""
-    if kind in CHAT_COMMANDS and store.pending_commands(project.id, CHAT_COMMANDS):
-        raise HTTPException(409, BUSY)
-    if kind == "approve" and project.gate is None:
-        raise HTTPException(409, "Nie ma teraz nic do zatwierdzenia.")
-    if kind == "answer":
-        try:
-            task = store.get_task(project.id, key or "")
-        except ProjectStoreError as exc:
-            raise HTTPException(404, str(exc)) from exc
-        if TaskStatus(task.status) is not TaskStatus.AWAITING_INPUT:
-            raise HTTPException(409, f"Zadanie {task.key} nie czeka na odpowiedź.")
-    if kind in ("pause", "resume") and ProjectPhase(project.phase) is not ProjectPhase.BUILDING:
-        raise HTTPException(409, "Pauzę i wznowienie można ustawić dopiero w trakcie budowy.")
 
 
 def _project_brief(project: ProjectRow) -> dict[str, Any]:

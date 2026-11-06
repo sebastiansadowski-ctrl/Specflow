@@ -20,7 +20,7 @@ from typing import Any
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import sessionmaker
 
-from specflow.domain import InvalidTransitionError, TaskStatus
+from specflow.domain import InvalidTransitionError
 from specflow.domain.project_phase import InvalidPhaseTransitionError, ProjectPhase
 from specflow.harness import AgentEvent, Harness, RunFinished
 from specflow.orchestrator import Orchestrator, OrchestratorConfig
@@ -108,7 +108,7 @@ class ProjectWorker:
             outcome = await orchestrator.run_next()
             store.commit()
             if outcome is None:
-                self._finish_if_done(store)
+                self._flow(store).finish_if_done()  # o fazach decyduje flow, nie worker
                 return False
             return True
 
@@ -210,18 +210,6 @@ class ProjectWorker:
 
         orchestrator.listeners.append(record)
         return orchestrator
-
-    def _finish_if_done(self, store: ProjectStore) -> None:
-        tasks = store.board_tasks(self.project_id)
-        if tasks and all(TaskStatus(t.status) is TaskStatus.DONE for t in tasks):
-            store.set_phase(self.project_id, P.DONE)
-            store.set_run_state(self.project_id, "idle")
-            store.add_message(
-                self.project_id,
-                "system",
-                "Wszystkie zadania są zrobione i przeszły weryfikację. Aplikacja jest gotowa.",
-            )
-            store.commit()
 
 
 def _should_build(project: ProjectRow) -> bool:

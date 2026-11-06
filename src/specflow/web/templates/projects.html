@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block body %}
+<main class="page projects">
+  <section class="panel">
+    <h1>Nowy projekt</h1>
+    <p class="muted">Opowiesz, czego potrzebujesz, a Specflow zaplanuje i zbuduje aplikację.</p>
+    <form class="new-project" method="post" action="/projects">
+      <label for="project-name">Nazwa projektu</label>
+      <div class="row">
+        <input id="project-name" name="name" maxlength="200" required placeholder="np. Lista zadań dla rodziny">
+        <button type="submit" class="primary">Zaczynamy</button>
+      </div>
+    </form>
+  </section>
+  <section class="panel">
+    <h2>Twoje projekty</h2>
+    {% if projects %}
+    <ul class="project-list">
+      {% for p in projects %}
+      <li><a href="/projects/{{ p.id }}">{{ p.name }}</a><span class="badge">{{ p.phase }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Nie masz jeszcze projektów.</p>
+    {% endif %}
+  </section>
+</main>
+{% endblock %}

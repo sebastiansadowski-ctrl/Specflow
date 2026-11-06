@@ -3,7 +3,8 @@
 Pozwala przeklikać cały Specflow bez modelu (`SPECFLOW_HARNESS=mock`), a w CI służy
 za test end-to-end. Odpowiedzi asystenta i praca agenta są NAGRANE: nie zależą od tego,
 co wpisze użytkownik. Kod zadań jest prawdziwy, więc weryfikacja (pytest, git, TDD)
-działa naprawdę.
+działa naprawdę. Szkielet projektu (pyproject z pytest) tworzy kod Specflow, jak w realnym
+przepływie (`workspace.scaffold`).
 """
 
 import itertools
@@ -14,7 +15,6 @@ from typing import Any
 from specflow.harness.base import Prompt, Session, TextPrompt
 from specflow.harness.mock import MockHarness, Scenario, success
 from specflow.interview.prompts import MARKER
-from specflow.workspace import Workspace
 
 FEATURE = "specs/001-lista-zadan"
 QUESTION = "Czy zadanie może mieć pusty tytuł?"
@@ -206,14 +206,6 @@ _ALL_DONE = _STUB_ADD_DONE.replace(
     _COMPLETE,
 )
 
-WORKSPACE_FILES = {
-    "pyproject.toml": (
-        '[project]\nname = "lista-zadan"\nversion = "0.1.0"\nrequires-python = ">=3.12"\n\n'
-        '[tool.pytest.ini_options]\npythonpath = ["."]\ntestpaths = ["tests"]\n'
-    ),
-}
-"""Szkielet projektu dla demo (konfiguracja pytest jest plikiem chronionym)."""
-
 
 def _planner() -> dict[str, Scenario | list[Scenario]]:
     return {
@@ -231,7 +223,7 @@ def _planner() -> dict[str, Scenario | list[Scenario]]:
         "/speckit.plan": Scenario(name="plan", files={f"{FEATURE}/plan.md": PLAN}),
         "/speckit.tasks": Scenario(name="tasks", files={f"{FEATURE}/tasks.md": TASKS}),
         "/speckit.analyze": Scenario(name="analyze", final_text="Brak problemów krytycznych."),
-        "Zadanie T001": success({"app/__init__.py": "", "app/todos.py": _STUB}),
+        "Zadanie T001": success({"app/todos.py": _STUB}),
         "Zadanie T002": success({"tests/test_add.py": TEST_ADD}, notes="Testy w tests/test_add.py"),
         "Zadanie T003": success({"app/todos.py": _STUB_ADD_DONE}),
         "Zadanie T004": success({"tests/test_complete.py": TEST_COMPLETE}),
@@ -255,12 +247,3 @@ class DemoHarness(MockHarness):
             )
             return next(turns)
         return super()._pick(prompt, session)
-
-
-def prepare_workspace(workspace: Workspace) -> None:
-    """Szkielet projektu demo (zamiast `specify init`, którego lokalnie nie ma)."""
-    for relative, content in WORKSPACE_FILES.items():
-        target = workspace.path / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content)
-    workspace.commit("chore: szkielet projektu (demo)")

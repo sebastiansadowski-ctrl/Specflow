@@ -26,6 +26,8 @@ class ArtifactInfo(BaseModel):
 
 
 class Artifact(ArtifactInfo):
+    markdown: str
+    """Źródło do renderowania (pliki inne niż .md jako blok kodu)."""
     html: str
 
 
@@ -63,7 +65,7 @@ def read_artifact(root: Path, feature_dir: str | None, relative: str) -> Artifac
     text = path.read_text(errors="replace")
     if path.suffix != ".md":
         text = f"```{path.suffix.lstrip('.')}\n{text}\n```"
-    return Artifact(path=info.path, title=info.title, html=render_markdown(text))
+    return Artifact(path=info.path, title=info.title, markdown=text, html=render_markdown(text))
 
 
 def _safe(root: Path, relative: str) -> Path | None:

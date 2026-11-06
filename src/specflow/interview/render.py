@@ -159,9 +159,10 @@ def render_plan_brief() -> str:
     return (
         "Technical stack (fixed by the platform - do not choose another): Python 3.12, "
         "FastAPI web app serving simple HTML pages with Jinja2, SQLite storage, pytest for "
-        "tests, uv for dependencies. Single project layout: application code in src/ or the "
-        "package directory, tests in tests/. Configure pytest so tests can import the app. "
-        + _LANGUAGE_RULES
+        "tests, uv for dependencies. The project skeleton already exists (created by the "
+        "platform): pyproject.toml with pytest configured, application code in the app/ "
+        "package, tests in tests/. Do not create or change the [tool.pytest.ini_options] "
+        "section; add dependencies with `uv add`. " + _LANGUAGE_RULES
     )
 
 
@@ -169,5 +170,7 @@ def render_tasks_brief() -> str:
     return (
         "Tests are REQUIRED by the constitution (Test-First): in every user story phase put "
         "the test tasks in a '### Tests for User Story N' subsection BEFORE the implementation "
-        "subsection. Every task must name the file path it changes. " + _LANGUAGE_RULES
+        "subsection. Every task must name the file path it changes. Do not add tasks that "
+        "create pyproject.toml or configure pytest - the platform already did it. "
+        + _LANGUAGE_RULES
     )

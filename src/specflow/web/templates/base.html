@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Specflow{% endblock %}</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false}'>
+  <script src="{{ url_for('static', path='vendor/htmx-2.0.4.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='app.js') }}" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Specflow</a>
+    <span class="version">v{{ version }}</span>
+    {% block topbar %}{% endblock %}
+  </header>
+  {% block body %}{% endblock %}
+</body>
+</html>
