@@ -1,10 +1,18 @@
-# Laboratorium Specflow: osobny projekt compose, niezależny od innych stacków na serwerze.
-# Osobna sieć i wolumeny; żadnych portów na zewnątrz; brak dostępu do docker.sock.
+# Specflow + laboratorium: osobny projekt compose, niezależny od innych stacków na serwerze.
+# Osobna sieć i wolumeny; jedyny port to interfejs Specflow na 127.0.0.1 (ADR-0010);
+# żaden kontener nie ma dostępu do docker.sock.
 #
 #   docker compose build
 #   docker compose run --rm opencode opencode auth login     # jednorazowo
 #   docker compose up -d
-#   docker compose exec lab bash                             # tu wykonujesz polecenia
+#   http://localhost:8000                                    # na serwerze: tunel SSH
+#   docker compose exec lab bash                             # ręczna konsola
+#
+# Wolumeny (kto co widzi):
+#   projects       - wspólny: Specflow (git, szkielet, weryfikacja) + agent (kod)
+#   specflow-data  - tylko Specflow: baza SQLite. Agent jej nie widzi, więc nie może
+#                    sam "oznaczyć zadań jako Done" z pominięciem weryfikacji.
+#   opencode-home  - tylko OpenCode: logowanie do modelu (token ChatGPT)
 name: specflow-lab
 
 x-image: &image
@@ -29,6 +37,33 @@ x-hardening: &hardening
   # runtime: runsc
 
 services:
+  specflow:
+    <<: *hardening
+    image: specflow:f00
+    build:
+      context: ..
+      dockerfile: docker/specflow.Dockerfile
+      args:
+        AGENT_UID: ${AGENT_UID:-1000}
+        AGENT_GID: ${AGENT_GID:-1000}
+    depends_on: [opencode]
+    environment:
+      SPECFLOW_HARNESS: opencode
+      SPECFLOW_OPENCODE_URL: http://opencode:4096
+      SPECFLOW_OPENCODE_PASSWORD: ${OPENCODE_SERVER_PASSWORD:?ustaw w docker/.env}
+    ports:
+      - "127.0.0.1:${SPECFLOW_PORT:-8000}:8000"   # tylko localhost (ADR-0010)
+    volumes:
+      - projects:/workspace             # ta sama ścieżka co u agenta
+      - specflow-data:/data             # baza Specflow - poza zasięgiem agenta
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 1g
+    cpus: 1
+
   opencode:
     <<: [*image, *hardening]
     environment:
@@ -61,5 +96,6 @@ networks:
 
 volumes:
   projects: {}
+  specflow-data: {}
   opencode-home: {}
   lab-home: {}

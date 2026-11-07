@@ -382,6 +382,16 @@ class ProjectStore:
             query = query.where(CommandRow.kind.in_(kinds))
         return list(self.session.scalars(query.order_by(CommandRow.id)))
 
+    def commands(self, project_id: int) -> list[CommandRow]:
+        """Wszystkie polecenia projektu (historia skrzynki), od najstarszego."""
+        return list(
+            self.session.scalars(
+                select(CommandRow)
+                .where(CommandRow.project_id == project_id)
+                .order_by(CommandRow.id)
+            )
+        )
+
     def begin_command(self, command: CommandRow) -> bool:
         """Oznacza początek wykonania. Zwraca True, gdy polecenie było już zaczęte
         (poprzednie wykonanie przerwała awaria) - wtedy worker wznawia zamiast powtarzać."""

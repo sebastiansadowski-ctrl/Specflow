@@ -1,19 +1,27 @@
-# Laboratorium Specflow w Dockerze
+# Specflow i laboratorium w Dockerze
 
 Osobny projekt compose **`specflow-lab`**, który można postawić obok innych stacków na tym samym
-serwerze. Dwa serwisy z jednego obrazu:
+serwerze albo na własnym komputerze (Docker Desktop). Decyzje: ADR-0010.
 
-| Serwis | Rola |
-|---|---|
-| `opencode` | serwer agenta OpenCode **v2.2.5** (adapter jest pisany pod jej API `/api/...`) |
-| `lab` | powłoka, w której bezpiecznie wykonujesz polecenia: testy, nagrywarka, później Specflow |
+| Serwis | Obraz | Rola |
+|---|---|---|
+| `specflow` | `specflow:f00` (`specflow.Dockerfile`) | interfejs, workery, weryfikacja; port tylko na `127.0.0.1:8000` |
+| `opencode` | `specflow-lab:f00` (`Dockerfile`) | serwer agenta OpenCode **v2.2.5**; dostępny tylko w sieci compose |
+| `lab` | `specflow-lab:f00` | ręczna konsola: testy, nagrywarka, uruchamianie zbudowanej aplikacji |
+
+| Wolumen | Kto widzi | Zawartość |
+|---|---|---|
+| `projects` | specflow, opencode, lab (`/workspace`) | repozytoria projektów |
+| `specflow-data` | **tylko** specflow (`/data`) | baza SQLite, eksporty. Agent jej nie widzi: nie może sam oznaczyć zadań jako Done |
+| `opencode-home` | **tylko** opencode | logowanie do modelu (token ChatGPT) |
+| `lab-home` | tylko lab | cache narzędzi |
 
 ## Izolacja
 
 | Warstwa | Ustawienie |
 |---|---|
 | Osobny projekt compose | własna sieć `specflow-lab_lab`, własne wolumeny; nic wspólnego z innymi stackami |
-| Brak portów na zewnątrz | `lab` łączy się z `opencode` po sieci wewnętrznej; nic nie jest wystawione na hosta |
+| Tylko localhost | jedyny port to interfejs Specflow na `127.0.0.1`; OpenCode jest dostępny wyłącznie w sieci compose |
 | Użytkownik bez uprawnień | wszystko działa jako `agent`, nie root |
 | `read_only: true` | obraz tylko do odczytu; zapis wyłącznie w wolumenach i `/tmp` |
 | `cap_drop: [ALL]`, `no-new-privileges` | brak dodatkowych uprawnień jądra i eskalacji |
@@ -25,13 +33,16 @@ serwerze. Dwa serwisy z jednego obrazu:
 Sieć wychodząca jest w F00 otwarta (model, pakiety). Lista dozwolonych adresów: F05/F08.
 Kontener `lab` ma dostęp do zapisu w repo (`/app`), bo tam piszesz kod i fikstury.
 
-## Uruchomienie na serwerze
+**Znane ryzyko F00:** agent wykonuje polecenia w kontenerze `opencode`, w którym jest też token
+do modelu. Agent zmanipulowany treścią, którą czyta (prompt injection), mógłby go odczytać.
+Docelowo polecenia agenta pójdą do osobnego kontenera bez sekretów (ROADMAP).
+
+## Uruchomienie (własny komputer albo serwer)
 
 ```bash
-# repo w dowolnym miejscu, np. obok innych projektów
-sudo mkdir -p /opt/specflow && sudo chown "$USER" /opt/specflow
-git clone https://github.com/sebastiansadowski-ctrl/Specflow.git /opt/specflow
-cd /opt/specflow/docker
+git clone https://github.com/sebastiansadowski-ctrl/Specflow.git specflow
+#   albo z pliku: git clone specflow.bundle specflow
+cd specflow/docker
 
 cp .env.example .env
 sed -i "s/^OPENCODE_SERVER_PASSWORD=.*/OPENCODE_SERVER_PASSWORD=$(openssl rand -hex 24)/" .env
@@ -40,8 +51,18 @@ sed -i "s/^AGENT_UID=.*/AGENT_UID=$(id -u)/; s/^AGENT_GID=.*/AGENT_GID=$(id -g)/
 docker compose build
 docker compose run --rm opencode opencode auth login      # jednorazowo: OpenAI → ChatGPT Plus/Pro
 docker compose up -d
-docker compose ls                                         # obok bw-merger-ovh: specflow-lab
+docker compose ps                                         # specflow: healthy
 ```
+
+Interfejs: **http://localhost:8000**. Na serwerze port jest tylko na `127.0.0.1` serwera,
+więc z laptopa łączysz się tunelem SSH:
+
+```bash
+ssh -L 8000:127.0.0.1:8000 uzytkownik@serwer      # potem w przeglądarce http://localhost:8000
+```
+
+Specflow w F00 nie ma logowania: kto ma dostęp do tego portu, może zlecać agentowi pracę.
+Dlatego nigdy nie wystawiaj go na publiczny adres.
 
 ### Logowanie bez przeglądarki
 
@@ -64,7 +85,29 @@ uv run python -m specflow.harness.opencode.record \
 Nagranie trafia do repo na serwerze (`tests/fixtures/opencode/smoke.jsonl`). Zrób z niego commit
 albo wyślij mi plik: na jego podstawie potwierdzimy mapowanie zdarzeń.
 
+## Eksport diagnostyczny przebiegu
+
+Po każdym etapie pierwszego prawdziwego przebiegu (ROADMAP: M6b) wyślij mi eksport:
+
+```bash
+docker compose exec specflow specflow export 1 -o /data/export-1.zip
+docker compose cp specflow:/data/export-1.zip .
+```
+
+W pliku są czat, zdarzenia, zadania, runy z promptami i historia gita projektu. Ustawień
+i tokenów nie ma, a hasło OpenCode jest zamieniane na `***`.
+
+## Obejrzenie zbudowanej aplikacji (lab)
+
+```bash
+docker compose run --rm -p 127.0.0.1:8001:8000 -w /workspace/0001-lista-zadan lab \
+    uv run uvicorn app.main:app --host 0.0.0.0 --port 8000      # http://localhost:8001
+```
+
 ## gVisor (zalecane na współdzielonym serwerze)
+
+Na Docker Desktop (własny komputer) gVisor nie jest dostępny i nie jest potrzebny: kontenery
+i tak działają w osobnej maszynie wirtualnej.
 
 Demon Dockera działa jako root, więc ucieczka z kontenera oznaczałaby dostęp do całego serwera,
 także do innych stacków. gVisor przechwytuje wywołania systemowe kontenera we własnym jądrze
