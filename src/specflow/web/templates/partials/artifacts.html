@@ -1,0 +1,14 @@
+<div id="artifacts" hx-get="/projects/{{ project.id }}/artifacts"
+     hx-trigger="sf:artifacts from:body delay:300ms" hx-swap="outerHTML">
+<h2>Dokumenty projektu</h2>
+{% if artifacts %}
+<ul class="artifact-list">
+  {% for a in artifacts %}
+  <li><button type="button" class="link" hx-get="/projects/{{ project.id }}/artifact?path={{ a.path | urlencode }}" hx-target="#artifact-view">{{ a.title }}</button></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted">Dokumenty pojawią się, gdy planista je przygotuje.</p>
+{% endif %}
+<div id="artifact-view" class="artifact-view"></div>
+</div>

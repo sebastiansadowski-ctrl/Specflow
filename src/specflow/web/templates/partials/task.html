@@ -1,0 +1,31 @@
+<div class="task-detail" hx-sync="this:replace" hx-get="/projects/{{ project.id }}/tasks/{{ task.key }}"
+     hx-trigger="sf:task-{{ task.key }} from:body delay:300ms" hx-swap="outerHTML">
+  <div class="side-head">
+    <button type="button" class="ghost" hx-get="/projects/{{ project.id }}/artifacts" hx-target="#side-content">‹ Dokumenty</button>
+  </div>
+  <h2>{{ task.key }}: {{ task.title }}</h2>
+  <p class="muted">Status: {{ status_label }}{% if task.story %} · {{ task.story }}{% endif %} · podejście {{ task.attempts }}</p>
+  {% if task.files %}<p class="muted small">Pliki: {{ task.files | join(", ") }}</p>{% endif %}
+
+  {% if awaiting %}
+  <article class="question-card">
+    <h3>{% if task.awaiting_reason == "attempts_exhausted" %}Agent nie dał rady po kilku próbach{% else %}Agent ma pytanie{% endif %}</h3>
+    <div class="md">{{ task.awaiting_message | md }}</div>
+    {% if answer_pending %}
+    <p class="muted">Odpowiedź zapisana. Zadanie ruszy, gdy skończy się bieżące.</p>
+    {% else %}
+    <form hx-post="/projects/{{ project.id }}/tasks/{{ task.key }}/answer" hx-target="closest .task-detail" hx-swap="outerHTML" data-reset-on-success>
+      <label for="answer-{{ task.key }}">Twoja odpowiedź</label>
+      <textarea id="answer-{{ task.key }}" name="text" rows="3" maxlength="10000" required></textarea>
+      <button type="submit" class="primary">Odpowiedz</button>
+    </form>
+    {% endif %}
+  </article>
+  {% endif %}
+  {% if notice %}<p class="notice" role="alert">{{ notice }}</p>{% endif %}
+
+  <h3>Log zadania</h3>
+  <ol class="feed-list task-log" data-feed data-task="{{ task.key }}">
+    {% for item in log %}<li class="feed-item {{ item.level }}">{{ item.text }}</li>{% endfor %}
+  </ol>
+</div>

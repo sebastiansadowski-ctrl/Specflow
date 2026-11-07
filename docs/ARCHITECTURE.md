@@ -118,6 +118,9 @@ przeglądarka ──POST──► API ──► tabela commands (inbox)
                                                 (powiadomienie)     (czyta z bazy po Last-Event-ID)
 ```
 
+W przeglądarce (ADR-0009) klient SSE nie składa widoków sam: po zdarzeniu prosi serwer
+o świeży fragment HTML (czat, tablica, karta zadania), a narrację dopisuje jako tekst.
+
 Przy starcie Specflow uzgadnia stan (przerwane zadania wracają do Ready, przerwane polecenia
 są wznawiane). Narrację dla użytkownika składa kod (`web/narration.py`), nie model.
 

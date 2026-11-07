@@ -4,12 +4,12 @@ import asyncio
 from pathlib import Path
 
 from specflow.bootstrap import build_runtime
-from specflow.harness import demo
 from specflow.harness.demo import DemoHarness
 from specflow.runtime import ProjectWorker, Runtime
 from specflow.settings import Settings
 from specflow.storage import ProjectStore
 from specflow.workspace import Workspace
+from specflow.workspace.scaffold import scaffold_python
 
 # Kolejne wiadomości użytkownika w demo (treść nie ma znaczenia - odpowiedzi są nagrane).
 TO_SPEC_GATE = ["Nie", "Komputer i telefon", "Lista zadań dla rodziny"]
@@ -26,7 +26,7 @@ def new_project(rt: Runtime, name: str = "Lista zadań") -> int:
         store = rt.store(session, 0)
         project = store.create_project(name)
         store.commit()
-        demo.prepare_workspace(Workspace.create(rt.projects_dir, project.id, project.name))
+        scaffold_python(Workspace.create(rt.projects_dir, project.id, project.name), project.name)
         store.enqueue(project.id, "start")
         store.commit()
         return project.id

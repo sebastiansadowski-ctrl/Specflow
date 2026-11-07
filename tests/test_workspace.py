@@ -81,3 +81,24 @@ def test_init_spec_kit_calls_pinned_cli_and_commits(tmp_path: Path) -> None:
 def test_slugify() -> None:
     assert slugify("  Lista Zadań 2.0 ") == "lista-zada-2-0"
     assert slugify("!!!") == "project"
+
+
+def test_scaffold_creates_python_skeleton_with_protected_pytest_config(tmp_path: Path) -> None:
+    import tomllib
+
+    from specflow.workspace.scaffold import package_name, scaffold_python
+
+    ws = Workspace.create(tmp_path, 3, "Lista zadań")
+    assert package_name("Łąka Żółwia") == "laka-zolwia"
+    assert scaffold_python(ws, "Lista zadań") is not None
+    config = tomllib.loads(ws.read("pyproject.toml"))
+    assert config["project"]["name"] == "lista-zadan"
+    assert config["tool"]["pytest"]["ini_options"] == {"pythonpath": ["."], "testpaths": ["tests"]}
+    assert (ws.path / "app/__init__.py").exists() and (ws.path / "tests").is_dir()
+    assert "__pycache__/" in ws.read(".gitignore")
+    assert "szkielet projektu" in run_command(["git", "log", "--format=%s"], ws.path)
+
+    (ws.path / "pyproject.toml").write_text("[project]\nname = 'moje'\n")
+    ws.commit("zmiana")
+    assert scaffold_python(ws, "Lista zadań") is None  # nic nie nadpisuje
+    assert "moje" in ws.read("pyproject.toml")

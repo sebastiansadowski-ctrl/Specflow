@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · Specflow{% endblock %}
+{% block topbar %}
+  <span class="project-name">{{ project.name }}</span>
+  <nav id="stages" class="stages" aria-label="Etapy projektu"
+       hx-get="/projects/{{ project.id }}/stages" hx-trigger="sf:stages from:body delay:200ms">
+    {% include "partials/stages.html" %}
+  </nav>
+{% endblock %}
+{% block body %}
+<main id="project" class="layout mode-{{ mode }}"
+      data-project-id="{{ project.id }}" data-mode="{{ mode }}" data-last-event="{{ last_event }}">
+
+  <section class="chat panel" aria-label="Czat">
+    <div class="chat-head">
+      <h2>Rozmowa</h2>
+      {% if mode == "build" %}<button type="button" class="ghost" data-toggle-chat aria-expanded="false">Czat</button>{% endif %}
+    </div>
+    <div id="chat-log" class="chat-log" hx-sync="this:replace"
+         hx-get="/projects/{{ project.id }}/chat" hx-trigger="sf:chat from:body delay:150ms">
+      {% include "partials/chat_log.html" %}
+    </div>
+    <form id="composer" class="composer" hx-post="/projects/{{ project.id }}/chat"
+          hx-target="#chat-log" data-reset-on-success>
+      <label for="composer-text" class="sr-only">Twoja wiadomość</label>
+      <textarea id="composer-text" name="text" rows="2" maxlength="10000" required
+                placeholder="Napisz odpowiedź albo opisz, co zmienić…"></textarea>
+      <button type="submit" class="primary">Wyślij</button>
+    </form>
+  </section>
+
+  {% if mode == "build" %}
+  <section class="work" aria-label="Budowa">
+    <div id="board" class="board panel" hx-sync="this:replace"
+         hx-get="/projects/{{ project.id }}/board" hx-trigger="sf:board from:body delay:200ms">
+      {% include "partials/board.html" %}
+    </div>
+    <section class="feed panel" aria-label="Log agenta">
+      <div class="feed-head">
+        <h2>Co się dzieje</h2>
+        <label class="details-toggle"><input type="checkbox" data-toggle-details> pokaż szczegóły</label>
+      </div>
+      <ol id="feed" class="feed-list" data-feed>
+        {% for item in feed %}
+        <li class="feed-item {{ item.level }}" data-task="{{ item.task }}">{{ item.text }}</li>
+        {% endfor %}
+      </ol>
+    </section>
+  </section>
+  {% endif %}
+
+  <aside id="side" class="side panel" aria-label="Dokumenty i szczegóły">
+    <div id="side-content">
+      {% include "partials/artifacts.html" %}
+    </div>
+  </aside>
+</main>
+{% endblock %}

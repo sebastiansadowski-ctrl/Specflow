@@ -1,0 +1,37 @@
+<div class="board-head">
+  <h2>Zadania <span class="muted">{{ board.done }} z {{ board.total }} zrobionych</span></h2>
+  <div class="run-state">
+    {% if board.finished %}
+      <span class="badge success">Gotowe</span>
+    {% elif board.paused_reason %}
+      <span class="badge danger">Wstrzymane: {{ board.paused_reason }}</span>
+      <button type="button" hx-post="/projects/{{ project.id }}/resume" hx-target="#board">Wznów</button>
+    {% elif board.run_state == "paused" %}
+      <span class="badge warning">Wstrzymane</span>
+      <button type="button" hx-post="/projects/{{ project.id }}/resume" hx-target="#board">Wznów</button>
+    {% else %}
+      <span class="badge accent">Budowa trwa</span>
+      <button type="button" hx-post="/projects/{{ project.id }}/pause" hx-target="#board">Wstrzymaj</button>
+    {% endif %}
+  </div>
+</div>
+{% if board.notice %}<p class="notice" role="alert">{{ board.notice }}</p>{% endif %}
+<div class="columns">
+  {% for column in board.columns %}
+  <div class="column" data-status="{{ column.status }}">
+    <h3>{{ column.label }} <span class="count">{{ column.tasks | length }}</span></h3>
+    {% for t in column.tasks %}
+    <button type="button" class="card {{ column.status }}" data-task-card="{{ t.key }}"
+            hx-get="/projects/{{ project.id }}/tasks/{{ t.key }}" hx-target="#side-content">
+      <span class="card-key">{{ t.key }}{% if t.story %} · {{ t.story }}{% endif %}</span>
+      <span class="card-title">{{ t.title }}</span>
+      <span class="card-meta">
+        {% if t.is_test %}<span class="tag">testy</span>{% endif %}
+        {% if t.attempts > 1 %}<span class="tag">podejście {{ t.attempts }}</span>{% endif %}
+        {% if column.status == "awaiting_input" %}<span class="tag warning">czeka na Ciebie</span>{% endif %}
+      </span>
+    </button>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</div>

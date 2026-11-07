@@ -1,0 +1,42 @@
+{% for m in chat.messages %}
+{% if m.role == "user" and m.text.startswith("[zatwierdzono") %}
+<div class="msg action"><span class="badge success">✓ Zatwierdzono {{ m.text[14:-1] }}</span></div>
+{% else %}
+<div class="msg {{ m.role }}">
+  {% if m.role == "user" %}<div class="bubble">{{ m.text }}</div>
+  {% else %}<div class="bubble md">{{ m.text | md }}</div>{% endif %}
+</div>
+{% endif %}
+{% endfor %}
+{% for text in chat.pending %}
+<div class="msg user pending"><div class="bubble">{{ text }}</div></div>
+{% endfor %}
+
+{% if chat.busy %}
+<div class="msg assistant typing" role="status"><div class="bubble">{{ chat.busy_text }}</div></div>
+{% endif %}
+
+{% if chat.gate %}
+<article class="gate-card" aria-label="Do akceptacji">
+  <h3>{% if chat.gate == "spec" %}Specyfikacja do akceptacji{% else %}Plan do akceptacji{% endif %}</h3>
+  <div class="md">{{ chat.gate_summary | md }}</div>
+  <div class="gate-actions">
+    <button type="button" class="primary" hx-post="/projects/{{ project.id }}/approve" hx-target="#chat-log">Zatwierdzam</button>
+    <label for="composer-text" class="button ghost">Chcę coś zmienić</label>
+  </div>
+</article>
+{% endif %}
+
+{% if chat.blocked and not chat.busy %}
+<article class="blocked-card" role="alert">
+  <h3>Planowanie utknęło</h3>
+  <p>{{ chat.blocked }}</p>
+  <p class="muted">Napisz wskazówkę dla planisty, a spróbuję jeszcze raz.</p>
+</article>
+{% endif %}
+
+{% if chat.progress %}
+<p class="progress muted">Zebrane informacje: {{ chat.progress[0] }} z {{ chat.progress[1] }}</p>
+{% endif %}
+
+{% if chat.notice %}<p class="notice" role="alert">{{ chat.notice }}</p>{% endif %}

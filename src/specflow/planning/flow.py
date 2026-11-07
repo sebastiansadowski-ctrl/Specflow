@@ -20,7 +20,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from specflow.domain import PlanPolicy, TaskGraph, load_task_plan
+from specflow.domain import PlanPolicy, TaskGraph, TaskStatus, load_task_plan
 from specflow.domain.project_phase import ProjectPhase
 from specflow.harness import AgentProfile, Harness, HarnessError, Session, SessionSpec
 from specflow.interview import (
@@ -40,6 +40,7 @@ from specflow.workspace import Workspace
 P = ProjectPhase
 Gate = Literal["spec", "plan"]
 INTERVIEW_PHASES = (P.CONSTITUTION, P.SPECIFY, P.CLARIFY)
+DONE_MESSAGE = "Wszystkie zadania są zrobione i przeszły weryfikację. Aplikacja jest gotowa."
 APPROVAL_MARK = "[zatwierdzono"
 StageFactory = Callable[[], Awaitable[StageResult]]
 
@@ -128,6 +129,21 @@ class ProjectFlow:
             )
             return self._start_building(project)
         return self._reply("Nie ma teraz nic do zatwierdzenia.")
+
+    def finish_if_done(self) -> bool:
+        """Koniec budowy: wszystkie zadania Done (po weryfikacji) → faza done. Zwraca True,
+        gdy projekt właśnie się zakończył. Woła worker, gdy orkiestrator nie ma już pracy."""
+        project = self._project()
+        tasks = self.store.board_tasks(self.project_id)
+        if P(project.phase) is not P.BUILDING or not tasks:
+            return False
+        if any(TaskStatus(t.status) is not TaskStatus.DONE for t in tasks):
+            return False
+        self.store.set_phase(self.project_id, P.DONE)
+        self.store.set_run_state(self.project_id, "idle")
+        self.store.add_message(self.project_id, "system", DONE_MESSAGE)
+        self.store.commit()
+        return True
 
     async def resume_interrupted(self) -> FlowReply:
         """Kończy pracę przerwaną przez awarię albo restart (polecenie zaczęte, a niezakończone).
