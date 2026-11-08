@@ -4,6 +4,12 @@
   <section class="panel">
     <h1>Nowy projekt</h1>
     <p class="muted">Opowiesz, czego potrzebujesz, a Specflow zaplanuje i zbuduje aplikację.</p>
+    {% if error %}
+    <div class="notice" role="alert">
+      <p>Nie udało się przygotować projektu. Szczegóły dla administratora:</p>
+      <pre class="error-details">{{ error }}</pre>
+    </div>
+    {% endif %}
     <form class="new-project" method="post" action="/projects">
       <label for="project-name">Nazwa projektu</label>
       <div class="row">

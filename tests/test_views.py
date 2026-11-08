@@ -155,3 +155,21 @@ def test_static_client_script_is_csp_friendly(env: tuple[TestClient, Runtime]) -
     script = client.get("/static/app.js").text
     assert "EventSource" in script and "textContent" in script
     assert ".innerHTML" not in script and "eval(" not in script
+
+
+def test_failed_workspace_setup_leaves_no_broken_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`specify init` nie działa (tu: brak CLI w PATH) → projekt i katalog są sprzątane,
+    a użytkownik widzi komunikat narzędzia zamiast błędu 500."""
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin") + ":/usr/bin:/bin")
+    rt, _ = make_runtime(tmp_path)
+    settings = Settings(data_dir=tmp_path, spec_kit_init=True)
+    client = TestClient(create_app(settings, runtime=rt, start_workers=False))
+    page = client.post("/projects", data={"name": "Lista zadań"}, follow_redirects=False)
+    api = client.post("/api/projects", json={"name": "Lista zadań"})
+    assert page.status_code == 502 and "Nie udało się przygotować projektu" in page.text
+    assert "specify init" in page.text
+    assert api.status_code == 502 and "specify init" in api.json()["detail"]
+    assert client.get("/api/projects").json() == []
+    assert not any(rt.projects_dir.iterdir())

@@ -27,7 +27,7 @@ from specflow.runtime import Runtime, Supervisor
 from specflow.settings import Settings
 from specflow.storage import CHAT_COMMANDS, ProjectRow, ProjectStore, ProjectStoreError
 from specflow.web.artifacts import ArtifactError, list_artifacts, read_artifact
-from specflow.web.commands import BUSY, create_project, submit
+from specflow.web.commands import BUSY, ProjectCreationError, create_project, submit
 from specflow.web.markdown import render_markdown
 from specflow.web.sse import event_stream, parse_last_event_id
 from specflow.web.views import router as views_router
@@ -122,7 +122,10 @@ def create_app(
 
     @app.post("/api/projects", status_code=201)
     async def create_project_api(body: CreateProject) -> dict[str, Any]:
-        return {"id": await create_project(app, body.name)}
+        try:
+            return {"id": await create_project(app, body.name)}
+        except ProjectCreationError as exc:
+            raise HTTPException(502, f"Nie udało się przygotować projektu: {exc}") from exc
 
     @app.get("/api/projects")
     async def projects() -> list[dict[str, Any]]:

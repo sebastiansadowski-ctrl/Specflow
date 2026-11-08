@@ -29,7 +29,7 @@ from specflow.interview.slots import progress
 from specflow.runtime import Runtime
 from specflow.storage import CHAT_COMMANDS, EventRow, ProjectRow, ProjectStore, ProjectStoreError
 from specflow.web.artifacts import ArtifactError, list_artifacts, read_artifact
-from specflow.web.commands import create_project, submit
+from specflow.web.commands import ProjectCreationError, create_project, submit
 from specflow.web.markdown import render_markdown
 from specflow.web.narration import PLANNING_STEPS, narrate
 
@@ -68,14 +68,15 @@ def _project(store: ProjectStore, project_id: int) -> ProjectRow:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def projects_page(request: Request) -> Response:
+async def projects_page(request: Request, error: str | None = None) -> Response:
     rt = _rt(request)
     with rt.sessions() as session:
         projects = [
             {"id": p.id, "name": p.name, "phase": PHASE_LABELS[P(p.phase)]}
             for p in reversed(rt.store(session, 0).projects())
         ]
-    return _render(request, "projects.html", {"projects": projects})
+    context = {"projects": projects, "error": error}
+    return _render(request, "projects.html", context, status=502 if error else 200)
 
 
 @router.post("/projects")
@@ -83,7 +84,10 @@ async def create_project_form(request: Request, name: str = Form("")) -> Respons
     name = name.strip()
     if not name or len(name) > 200:
         return await projects_page(request)
-    project_id = await create_project(request.app, name)
+    try:
+        project_id = await create_project(request.app, name)
+    except ProjectCreationError as exc:
+        return await projects_page(request, error=str(exc))
     return RedirectResponse(f"/projects/{project_id}", status_code=303)
 
 

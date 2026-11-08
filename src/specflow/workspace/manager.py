@@ -22,6 +22,10 @@ class WorkspaceError(Exception):
     pass
 
 
+_ERROR_TAIL = 2000
+"""Ile znaków wyjścia nieudanej komendy trafia do komunikatu błędu."""
+
+
 def run_command(args: Sequence[str], cwd: Path) -> str:
     try:
         result = subprocess.run(
@@ -30,7 +34,9 @@ def run_command(args: Sequence[str], cwd: Path) -> str:
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise WorkspaceError(f"{' '.join(args)}: {exc}") from exc
     if result.returncode != 0:
-        raise WorkspaceError(f"{' '.join(args)} -> {result.returncode}: {result.stderr.strip()}")
+        # Część narzędzi (np. CLI na Typer/Rich jak `specify`) wypisuje błędy na stdout.
+        output = (result.stderr.strip() or result.stdout.strip())[-_ERROR_TAIL:]
+        raise WorkspaceError(f"{' '.join(args)} -> {result.returncode}: {output}")
     return result.stdout
 
 

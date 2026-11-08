@@ -57,6 +57,16 @@ class ProjectStore:
         self._event(project.id, "project_created", Actor.SYSTEM, payload={"name": name})
         return project
 
+    def delete_project(self, project_id: int) -> None:
+        """Usuwa projekt z całą historią. W F00 tylko do sprzątania nieudanego zakładania."""
+        project = self.get_project(project_id)
+        for model in (EventRow, CommandRow, ChatMessageRow, RunRow, DecisionRow, TaskRow):
+            for row in self.session.scalars(select(model).where(model.project_id == project_id)):
+                self.session.delete(row)
+        self.session.flush()
+        self.session.delete(project)
+        self.session.flush()
+
     def import_plan(self, project_id: int, graph: TaskGraph) -> list[TaskRow]:
         """Zapisuje zadania z zwalidowanego grafu jako Backlog, potem wylicza Ready."""
         if self._tasks(project_id):

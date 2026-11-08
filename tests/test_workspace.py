@@ -102,3 +102,13 @@ def test_scaffold_creates_python_skeleton_with_protected_pytest_config(tmp_path:
     ws.commit("zmiana")
     assert scaffold_python(ws, "Lista zadań") is None  # nic nie nadpisuje
     assert "moje" in ws.read("pyproject.toml")
+
+
+def test_command_error_includes_stdout_when_stderr_is_empty(tmp_path: Path) -> None:
+    import sys
+
+    from specflow.workspace import WorkspaceError
+
+    script = "import sys; print('Error: integration not found'); sys.exit(1)"
+    with pytest.raises(WorkspaceError, match="integration not found"):
+        run_command([sys.executable, "-c", script], tmp_path)

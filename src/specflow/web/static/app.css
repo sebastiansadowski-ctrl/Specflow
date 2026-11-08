@@ -109,6 +109,7 @@ label { font-size: 13px; color: var(--muted); }
 .composer { display: flex; gap: 8px; align-items: flex-end; }
 .progress { font-size: 13px; margin: 0; }
 .notice { color: var(--danger); font-size: 14px; margin: 0; }
+.error-details { white-space: pre-wrap; font-size: 12px; background: var(--danger-soft); padding: 8px; border-radius: 6px; max-height: 240px; overflow: auto; }
 
 .gate-card, .blocked-card, .question-card {
   border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius);

@@ -5,6 +5,8 @@ HTTP nie zmienia stanu projektu (ADR-0008). Sprawdzenia tutaj dają tylko szybk�
 """
 
 import asyncio
+import logging
+import shutil
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -13,26 +15,43 @@ from specflow.domain import TaskStatus
 from specflow.domain.project_phase import ProjectPhase
 from specflow.runtime import Runtime, Supervisor
 from specflow.storage import CHAT_COMMANDS, ProjectRow, ProjectStore, ProjectStoreError
-from specflow.workspace import Workspace
+from specflow.workspace import Workspace, WorkspaceError
 from specflow.workspace.scaffold import scaffold_python
 
+log = logging.getLogger(__name__)
 BUSY = "Poczekaj chwilę, kończę poprzednią odpowiedź."
 
 
+class ProjectCreationError(Exception):
+    """Nie udało się przygotować workspace projektu (git, Spec Kit, szkielet)."""
+
+
 async def create_project(app: FastAPI, name: str) -> int:
-    """Projekt + workspace (Spec Kit przy OpenCode, szkielet Python zawsze) + start wywiadu."""
+    """Projekt + workspace (Spec Kit przy OpenCode, szkielet Python zawsze) + start wywiadu.
+
+    Wszystko albo nic: gdy przygotowanie workspace się nie uda, projekt i jego katalog są
+    usuwane, a wywołujący dostaje ProjectCreationError z komunikatem narzędzia.
+    """
     rt: Runtime = app.state.runtime
     with rt.sessions() as session:
         store = rt.store(session, 0)
         project = store.create_project(name.strip())
         store.commit()
-        workspace = Workspace.create(rt.projects_dir, project.id, project.name)
-        if app.state.settings.should_init_spec_kit():
-            await asyncio.to_thread(workspace.init_spec_kit)
-        scaffold_python(workspace, project.name)
-        store.enqueue(project.id, "start")
-        store.commit()
         project_id = project.id
+        path = Workspace.path_for(rt.projects_dir, project.id, project.name)
+        try:
+            workspace = Workspace.create(rt.projects_dir, project.id, project.name)
+            if app.state.settings.should_init_spec_kit():
+                await asyncio.to_thread(workspace.init_spec_kit)
+            scaffold_python(workspace, project.name)
+        except WorkspaceError as exc:
+            log.error("Nie udało się przygotować projektu %s: %s", project_id, exc)
+            store.delete_project(project_id)
+            store.commit()
+            shutil.rmtree(path, ignore_errors=True)
+            raise ProjectCreationError(str(exc)) from exc
+        store.enqueue(project_id, "start")
+        store.commit()
     if app.state.start_workers:
         app.state.supervisor.ensure_worker(project_id)
     return project_id
