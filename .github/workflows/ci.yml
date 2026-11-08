@@ -31,3 +31,9 @@ jobs:
 
       - name: Tests
         run: uv run pytest -q
+
+      - name: Docker compose config
+        working-directory: docker
+        env:
+          OPENCODE_SERVER_PASSWORD: ci-only
+        run: docker compose config -q

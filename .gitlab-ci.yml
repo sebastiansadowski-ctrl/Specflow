@@ -1,0 +1,44 @@
+# CI na GitLabie: te same kroki co .github/workflows/ci.yml.
+stages: [check]
+
+# Pipeline dla merge requestów oraz gałęzi bez otwartego MR (bez dublowania).
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+.always: &always
+  rules:
+    - when: on_success
+
+checks:
+  <<: *always
+  stage: check
+  image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+  variables:
+    UV_CACHE_DIR: .uv-cache
+    UV_LINK_MODE: copy
+  cache:
+    key: uv
+    paths: [.uv-cache]
+  before_script:
+    # git: testy workspace i weryfikacji tworzą prawdziwe repozytoria
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
+    - git config --global user.name "CI" && git config --global user.email "ci@specflow.local"
+    - uv sync
+  script:
+    - uv run ruff check .
+    - uv run ruff format --check .
+    - uv run mypy
+    - uv run pytest -q
+
+compose:
+  <<: *always
+  stage: check
+  image: docker:27-cli
+  variables:
+    OPENCODE_SERVER_PASSWORD: ci-only
+  script:
+    - cd docker && docker compose config -q
