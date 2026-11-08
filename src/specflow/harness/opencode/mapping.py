@@ -5,8 +5,15 @@ w tagu v2.2.5. Koperta zdarzenia: {"id", "type", "created", "data": {"sessionID"
 
 Mapper jest stanowy w obrębie jednej sesji: `session.tool.called` nie niesie nazwy narzędzia,
 więc zapamiętujemy ją z `session.tool.input.started`.
+
+Potwierdzone nagraniem z prawdziwego OpenCode 2.2.5 (tests/fixtures/opencode/smoke.jsonl):
+- edycje plików idą narzędziem `patch` z argumentem `patchText` (format „*** Add File: …”),
+  a nie `filePath` - ścieżki odczytujemy z nagłówków łatki;
+- `session.tool.success` niesie `metadata.files[].file` (ścieżki względne) i `content[].text`;
+- `session.step.ended` nie ma pola `files`.
 """
 
+import re
 from typing import Any
 
 from specflow.harness.events import (
@@ -36,6 +43,7 @@ SUBSCRIBED_TYPES = [
 ]
 
 _PATH_KEYS = ("filePath", "path", "file")
+_PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Add|Update|Delete) File: (.+)$", re.MULTILINE)
 _EDIT_TOOLS = {"edit", "write", "patch", "multiedit", "apply_patch"}
 _MAX_SUMMARY = 160
 
@@ -52,10 +60,20 @@ def _describe(tool: str, args: dict[str, Any]) -> str:
     return f"{tool}: {target}" if "command" in args else f"{tool} {target}"
 
 
+def _patch_files(args: dict[str, Any]) -> list[str]:
+    """Ścieżki z łatki w formacie apply_patch: „*** Add/Update/Delete File: ścieżka”."""
+    patch = args.get("patchText") or args.get("patch")
+    return [m.strip() for m in _PATCH_FILE_RE.findall(patch)] if isinstance(patch, str) else []
+
+
 def _target(args: dict[str, Any]) -> str | None:
     for key in _PATH_KEYS:
         if key in args:
             return _short(args[key])
+    files = _patch_files(args)
+    if files:
+        more = f" (+{len(files) - 1})" if len(files) > 1 else ""
+        return _short(files[0] + more)
     for key in ("command", "pattern"):
         if key in args:
             return _short(args[key])
@@ -64,6 +82,14 @@ def _target(args: dict[str, Any]) -> str | None:
 
 def _as_dict(value: object) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _content_text(data: dict[str, Any]) -> str:
+    """Pierwsza linia tekstu wyniku narzędzia (np. „Success. Updated the following files:”)."""
+    for part in data.get("content") or []:
+        if isinstance(part, dict) and isinstance(part.get("text"), str) and part["text"].strip():
+            return _short(part["text"].strip().splitlines()[0])
+    return ""
 
 
 def _error_text(error: object) -> str:
@@ -110,12 +136,11 @@ class OpenCodeEventMapper:
                 ]
             case "session.tool.success":
                 tool = self.tool_names.get(call_id, "tool")
-                events: list[AgentEvent] = [ToolResult(call_id=call_id, tool=tool, ok=True)]
+                events: list[AgentEvent] = [
+                    ToolResult(call_id=call_id, tool=tool, ok=True, summary=_content_text(data))
+                ]
                 if tool in _EDIT_TOOLS:
-                    args = self.tool_inputs.get(call_id, {})
-                    path = next((str(args[k]) for k in _PATH_KEYS if k in args), None)
-                    if path:
-                        events += self._file_changed([path])
+                    events += self._file_changed(self._edited_paths(call_id, data))
                 return events
             case "session.tool.failed":
                 tool = self.tool_names.get(call_id, "tool")
@@ -156,6 +181,20 @@ class OpenCodeEventMapper:
                 return []
             case _:
                 return []
+
+    def _edited_paths(self, call_id: str, data: dict[str, Any]) -> list[str]:
+        """Najpierw `metadata.files` z wyniku (2.2.5), potem argumenty wywołania."""
+        metadata = _as_dict(data.get("metadata"))
+        reported = [
+            str(item["file"])
+            for item in metadata.get("files") or []
+            if isinstance(item, dict) and item.get("file")
+        ]
+        if reported:
+            return reported
+        args = self.tool_inputs.get(call_id, {})
+        path = next((str(args[k]) for k in _PATH_KEYS if k in args), None)
+        return [path] if path else _patch_files(args)
 
     def _file_changed(self, paths: list[str]) -> list[AgentEvent]:
         fresh = [p for p in paths if p not in self.changed_paths]

@@ -9,3 +9,6 @@
 - `speckit_constitution_template.md`, `speckit_spec_template.md`: szablony z Spec Kit
   **v1.3.0** (commit `34a0d38`, licencja MIT). Kontrole artefaktów muszą je odrzucić
   (nieuzupełnione pola, znaczniki `[NEEDS CLARIFICATION]`).
+- `opencode/smoke.jsonl`: **nagranie z prawdziwego OpenCode 2.2.5** (model `openai/gpt-6.1-terra`,
+  polecenie „utwórz hello.py”), zrobione `record.py` w kontenerze lab (M6b, etap 0). Test
+  `test_opencode_smoke.py` sprawdza na nim mapowanie zdarzeń i raport agenta.
