@@ -50,5 +50,6 @@ def test_interviewer_has_no_tools() -> None:
 def test_safety_rules_win_for_every_profile(profile: AgentProfile) -> None:
     rules = rules_for(profile)
     assert effect(rules, "bash", "git push origin main") == "deny"
+    assert effect(rules, "shell", "git push origin main") == "deny"  # nazwa w OpenCode 2.x
     assert effect(rules, "read", ".env") == "deny"
     assert effect(rules, "doom_loop", "edit") == "deny"

@@ -33,7 +33,8 @@ RUN uv python install "${PYTHON_VERSION}" \
     && chmod -R a+rX /opt/uv \
     && specify --help > /dev/null
 
-RUN npm install -g "opencode-ai@${OPENCODE_VERSION}" \
+# OpenCode 2.x jest publikowany jako @opencode/cli (pakiet opencode-ai to linia 1.x).
+RUN npm install -g "@opencode/cli@${OPENCODE_VERSION}" \
     && npm cache clean --force \
     && opencode --version
 

@@ -42,6 +42,10 @@ def ev(type_: str, key: str | None = None, **payload: Any) -> EventRow:
             "T003: uruchamia testy",
         ),
         (
+            ev("agent_tool_call", "T003", tool="shell", target="uv run pytest -q"),
+            "T003: uruchamia testy",
+        ),
+        (
             ev("agent_tool_call", "T003", tool="bash", target="uv add httpx"),
             "T003: instaluje zależności",
         ),

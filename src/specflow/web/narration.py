@@ -122,7 +122,7 @@ def _tool(tool: str, target: Any) -> str:
         return f"zapisuje plik {what}" if what else "zapisuje plik"
     if name in _BROWSE_TOOLS:
         return "przegląda pliki projektu"
-    if name == "bash":
+    if name in ("bash", "shell"):  # OpenCode 2.x: narzędzie poleceń to `shell`
         return _command(what or "")
     if name.startswith("todo"):
         return "planuje kolejne kroki"

@@ -24,7 +24,7 @@ class AgentProfile(StrEnum):
 
 class PermissionRule(BaseModel):
     action: str
-    """Narzędzie lub strażnik: edit, bash, read, webfetch, doom_loop, external_directory, *."""
+    """Narzędzie lub strażnik: edit, bash/shell, read, webfetch, doom_loop, external_directory."""
     resource: str
     """Wzorzec ścieżki albo komendy, np. "tests/**", "git push*"."""
     effect: Literal["allow", "deny"]
@@ -32,11 +32,13 @@ class PermissionRule(BaseModel):
 
 TEST_PATHS = ["tests/**", "**/tests/**", "**/test_*.py", "**/*_test.py", "**/*.test.*"]
 
+SHELL_TOOLS = ("bash", "shell")
+"""OpenCode 2.x nazywa narzędzie poleceń `shell` (2.2.5: wywołania `bash` są przekierowywane
+do `shell`). Reguły dla poleceń dajemy dla obu nazw, żeby nie zależeć od wersji."""
+_SHELL_DENY = ("git push*", "git remote*", "sudo *", "rm -rf /*")
+
 _SAFETY: list[tuple[str, str]] = [
-    ("bash", "git push*"),
-    ("bash", "git remote*"),
-    ("bash", "sudo *"),
-    ("bash", "rm -rf /*"),
+    *((tool, pattern) for tool in SHELL_TOOLS for pattern in _SHELL_DENY),
     ("doom_loop", "*"),
     ("external_directory", "*"),
     ("read", "*.env"),
