@@ -1,7 +1,20 @@
 # CI na GitLabie: te same kroki co .github/workflows/ci.yml.
 stages: [check]
 
+# Pipeline dla merge requestów oraz gałęzi bez otwartego MR (bez dublowania).
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    - if: $CI_COMMIT_BRANCH
+
+.always: &always
+  rules:
+    - when: on_success
+
 checks:
+  <<: *always
   stage: check
   image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
   variables:
@@ -22,6 +35,7 @@ checks:
     - uv run pytest -q
 
 compose:
+  <<: *always
   stage: check
   image: docker:27-cli
   variables:
