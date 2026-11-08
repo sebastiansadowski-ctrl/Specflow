@@ -39,19 +39,63 @@ Docelowo polecenia agenta pójdą do osobnego kontenera bez sekretów (ROADMAP).
 
 ## Uruchomienie (własny komputer albo serwer)
 
+Wymagany Docker: na macOS i Windows **Docker Desktop**, na serwerze Docker Engine z pluginem
+compose. Polecenia działają w terminalu macOS i Linuksa.
+
+### 1. Kod i ustawienia
+
 ```bash
-git clone https://github.com/sebastiansadowski-ctrl/Specflow.git specflow
+git clone git@gitlab.com:none9324545/specflow.git specflow
 #   albo z pliku: git clone specflow.bundle specflow
 cd specflow/docker
 
 cp .env.example .env
-sed -i "s/^OPENCODE_SERVER_PASSWORD=.*/OPENCODE_SERVER_PASSWORD=$(openssl rand -hex 24)/" .env
-sed -i "s/^AGENT_UID=.*/AGENT_UID=$(id -u)/; s/^AGENT_GID=.*/AGENT_GID=$(id -g)/" .env
+# losowe hasło serwera OpenCode i Twój UID/GID (sed -i.bak działa na macOS i Linuksie)
+sed -i.bak "s/^OPENCODE_SERVER_PASSWORD=.*/OPENCODE_SERVER_PASSWORD=$(openssl rand -hex 24)/" .env
+sed -i.bak "s/^AGENT_UID=.*/AGENT_UID=$(id -u)/; s/^AGENT_GID=.*/AGENT_GID=$(id -g)/" .env
+rm .env.bak
+```
 
-docker compose build
-docker compose run --rm opencode opencode auth login      # jednorazowo: OpenAI → ChatGPT Plus/Pro
+### 2. Obrazy
+
+```bash
+docker compose build          # pierwszy raz kilka minut
+```
+
+### 3. Logowanie OpenCode do planu ChatGPT (jednorazowo)
+
+```bash
+docker compose run --rm opencode opencode auth login
+```
+
+Wybierz **OpenAI**, a potem **ChatGPT Pro/Plus (headless)**. Kontener nie ma przeglądarki, więc
+OpenCode pokaże link i kod: otwórz link w przeglądarce na komputerze, zaloguj się do ChatGPT
+i wpisz kod. Wariant „browser” nie zadziała w kontenerze (czeka na odpowiedź na `localhost`
+wewnątrz kontenera). Logowanie zostaje w wolumenie `opencode-home`.
+
+### 4. Domyślny model (jednorazowo)
+
+Specflow w F00 nie wybiera modelu: używa domyślnego modelu OpenCode (ADR-0010, M6b).
+Najpierw sprawdź dokładne nazwy modeli dostępnych w Twoim planie:
+
+```bash
+docker compose run --rm opencode opencode models openai
+```
+
+Potem zapisz wybrany model (przykład: `openai/gpt-5.4` - dobry kompromis jakości i limitów
+planu Plus; przy wyczerpywaniu limitów przejdź na mniejszy wariant, np. `-mini`):
+
+```bash
+docker compose run --rm opencode sh -c 'mkdir -p ~/.config/opencode && printf "%s\n" \
+  "{\"\$schema\": \"https://opencode.ai/config.json\", \"model\": \"openai/gpt-5.4\"}" \
+  > ~/.config/opencode/opencode.json && cat ~/.config/opencode/opencode.json'
+```
+
+### 5. Start
+
+```bash
 docker compose up -d
-docker compose ps                                         # specflow: healthy
+docker compose ps             # specflow: healthy
 ```
 
 Interfejs: **http://localhost:8000**. Na serwerze port jest tylko na `127.0.0.1` serwera,
@@ -63,12 +107,6 @@ ssh -L 8000:127.0.0.1:8000 uzytkownik@serwer      # potem w przeglądarce http:/
 
 Specflow w F00 nie ma logowania: kto ma dostęp do tego portu, może zlecać agentowi pracę.
 Dlatego nigdy nie wystawiaj go na publiczny adres.
-
-### Logowanie bez przeglądarki
-
-Jeśli `opencode auth login` pokaże kod do wpisania, otwórz podany link na laptopie.
-Jeśli pokaże link z `localhost:<port>`, potrzebny jest tunel. Daj znać, jaki port pokazał,
-dopasujemy jednorazowe wystawienie go na `127.0.0.1` serwera i `ssh -L` z laptopa.
 
 ## Praca w laboratorium
 
@@ -82,8 +120,10 @@ uv run python -m specflow.harness.opencode.record \
     --dir /workspace/smoke --out tests/fixtures/opencode/smoke.jsonl
 ```
 
-Nagranie trafia do repo na serwerze (`tests/fixtures/opencode/smoke.jsonl`). Zrób z niego commit
-albo wyślij mi plik: na jego podstawie potwierdzimy mapowanie zdarzeń.
+Nagranie trafia do Twojej kopii repo (`tests/fixtures/opencode/smoke.jsonl`, katalog repo jest
+zamontowany w `lab` jako `/app`). Wyślij mi ten plik: na jego podstawie potwierdzimy mapowanie
+zdarzeń OpenCode (etap 0 pierwszego przebiegu, M6b). `uv sync` w `lab` tworzy w repo katalog
+`.venv` dla Linuksa - jest w `.gitignore`, nie przeszkadza.
 
 ## Eksport diagnostyczny przebiegu
 
