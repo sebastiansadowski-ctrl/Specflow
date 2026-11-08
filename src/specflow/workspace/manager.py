@@ -74,7 +74,12 @@ class Workspace:
         return root / f"{project_id:04d}-{slugify(name)}"
 
     def init_spec_kit(self, integration: str = "opencode") -> None:
-        """`specify init --here` w przypiętej wersji; potem commit bazowy."""
+        """`specify init --here` w przypiętej wersji; potem commit bazowy.
+
+        `--ignore-agent-tools`: Spec Kit domyślnie sprawdza, czy program agenta (`opencode`)
+        jest zainstalowany lokalnie. U nas agent działa w osobnym kontenerze, a `init` tylko
+        zapisuje szablony i komendy dla niego - programu nie potrzebuje (ADR-0010).
+        """
         self._run(
             [
                 "specify",
@@ -82,6 +87,7 @@ class Workspace:
                 "--here",
                 "--force",
                 "--non-interactive",
+                "--ignore-agent-tools",
                 "--integration",
                 integration,
                 "--script",

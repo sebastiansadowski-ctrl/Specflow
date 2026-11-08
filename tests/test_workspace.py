@@ -112,3 +112,17 @@ def test_command_error_includes_stdout_when_stderr_is_empty(tmp_path: Path) -> N
     script = "import sys; print('Error: integration not found'); sys.exit(1)"
     with pytest.raises(WorkspaceError, match="integration not found"):
         run_command([sys.executable, "-c", script], tmp_path)
+
+
+def test_spec_kit_init_does_not_require_agent_binary_locally(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regresja M6b: OpenCode działa w innym kontenerze niż Specflow, więc `specify init`
+    musi pomijać sprawdzanie programu agenta (--ignore-agent-tools)."""
+    calls: list[list[str]] = []
+    ws = Workspace.create(tmp_path, 4, "Init")
+    monkeypatch.setattr(ws, "_run", lambda args, cwd: calls.append(list(args)) or "")
+    monkeypatch.setattr(ws, "commit", lambda message: None)
+    ws.init_spec_kit()
+    assert calls[0][:2] == ["specify", "init"]
+    assert "--ignore-agent-tools" in calls[0] and "--non-interactive" in calls[0]
