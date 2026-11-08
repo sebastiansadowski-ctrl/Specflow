@@ -48,7 +48,8 @@ INTERVIEW = [
     say(message="Czy aplikacja będzie przechowywać dane osobowe?"),
     say(
         message="Dziękuję!",
-        updates={"personal_data": "tak, e-maile i hasła", "devices": "komputer"},
+        updates={"devices": "komputer"},
+        personal_data={"stored": True, "kinds": ["e-maile", "hasła"]},
     ),
     say(message="Opowiedz, co ma robić aplikacja."),
     say(

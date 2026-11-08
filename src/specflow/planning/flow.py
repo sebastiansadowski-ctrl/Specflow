@@ -22,7 +22,17 @@ from pydantic import BaseModel
 
 from specflow.domain import PlanPolicy, TaskGraph, TaskStatus, load_task_plan
 from specflow.domain.project_phase import ProjectPhase
-from specflow.harness import AgentProfile, Harness, HarnessError, Session, SessionSpec
+from specflow.harness import (
+    AgentEvent,
+    AgentProfile,
+    Harness,
+    HarnessError,
+    Session,
+    SessionSpec,
+    ToolCall,
+    Usage,
+)
+from specflow.harness.observed import ObservedHarness
 from specflow.interview import (
     Interviewer,
     InterviewState,
@@ -78,12 +88,30 @@ class ProjectFlow:
         self.store = store
         self.workspace = workspace
         self.project_id = project_id
-        self.interviewer = interviewer or Interviewer(harness)
+        self.interviewer = interviewer or Interviewer(
+            ObservedHarness(harness, self._observer("interviewer"))
+        )
         project = store.get_project(project_id)
         self.pipeline = pipeline or PlanningPipeline(
-            harness, workspace, session_id=project.planner_session_id
+            ObservedHarness(harness, self._observer("planner")),
+            workspace,
+            session_id=project.planner_session_id,
         )
         self._pending_graph: TaskGraph | None = None
+
+    def _observer(self, role: str) -> Callable[[AgentEvent], None]:
+        """Zapis do dziennika (tylko eksport, bez narracji): zużycie tokenów wywiadu
+        i planisty oraz narzędzia planisty. Pozwala policzyć koszt przebiegu (M6b)."""
+
+        def observe(event: AgentEvent) -> None:
+            if isinstance(event, Usage):
+                payload = {"role": role, **event.model_dump(exclude={"kind"})}
+                self.store.log(self.project_id, "llm_usage", role, payload=payload)
+            elif isinstance(event, ToolCall) and role == "planner":
+                payload = {"tool": event.tool, "target": event.target}
+                self.store.log(self.project_id, "planner_tool_call", role, payload=payload)
+
+        return observe
 
     # --- API -----------------------------------------------------------------------
 

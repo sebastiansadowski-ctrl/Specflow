@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from specflow.interview.slots import InterviewState, Story, slots_for
+from specflow.interview.slots import InterviewState, PersonalData, Story, slots_for
 
 _FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
@@ -23,6 +23,8 @@ class TurnOutput(BaseModel):
     """Pełna aktualna lista czynności (zastępuje poprzednią), albo None = bez zmian."""
     assumptions: list[str] = Field(default_factory=list)
     clarifications: dict[str, str] = Field(default_factory=dict)
+    personal_data: PersonalData | None = None
+    """Etap constitution: czy przechowujemy dane osobowe i jakie (gdy już wiadomo)."""
     user_wants_to_finish: bool = False
 
 
@@ -61,6 +63,16 @@ def apply_turn(state: InterviewState, turn: TurnOutput) -> tuple[InterviewState,
             ignored.append(name)
         elif value.strip():
             new.answers[name] = value.strip()
+    if turn.personal_data is not None and state.stage == "constitution":
+        new.personal_data = turn.personal_data
+        kinds = ", ".join(k.strip() for k in turn.personal_data.kinds if k.strip())
+        new.answers["personal_data"] = (
+            f"tak: {kinds}"
+            if turn.personal_data.stored and kinds
+            else "tak"
+            if turn.personal_data.stored
+            else "nie"
+        )
     if turn.stories is not None and state.stage == "specify":
         new.stories = [s for s in turn.stories if s.title.strip()]
     for assumption in turn.assumptions:
@@ -79,6 +91,8 @@ def apply_turn(state: InterviewState, turn: TurnOutput) -> tuple[InterviewState,
 def state_for_prompt(state: InterviewState) -> dict[str, Any]:
     """Zwięzły stan do promptu (model widzi, co już wiemy)."""
     data: dict[str, Any] = {"answers": state.answers, "assumptions": state.assumptions}
+    if state.stage == "constitution" and state.personal_data is not None:
+        data["personal_data"] = state.personal_data.model_dump()
     if state.stage == "specify":
         data["stories"] = [s.model_dump() for s in state.stories]
     if state.stage == "clarify":

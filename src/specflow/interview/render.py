@@ -5,6 +5,8 @@ zbudowane - dlatego składa je kod z zebranych slotów i sparsowanych artefaktó
 a nie model (streszczenie modelu mogłoby coś przeinaczyć).
 """
 
+from datetime import date
+
 from specflow.domain import TaskGraph
 from specflow.interview.slots import InterviewState
 
@@ -93,15 +95,24 @@ def render_plan_summary(story_titles: list[str], graph: TaskGraph) -> str:
 # --- briefy dla komend Spec Kit (argumenty /speckit.*) ---------------------------
 
 
-def render_constitution_brief(state: InterviewState, project_name: str) -> str:
+def render_constitution_brief(
+    state: InterviewState, project_name: str, today: date | None = None
+) -> str:
+    today = today or date.today()
     a = state.answers
     principles = "\n".join(f"- {name}: {text}" for name, text in DEFAULT_PRINCIPLES)
-    extra = [f"Personal data: {a.get('personal_data', 'unknown')}"]
-    if "tak" in a.get("personal_data", "").lower() or "@" in a.get("personal_data", ""):
-        extra.append(
-            "Add a principle 'Personal Data Protection': passwords hashed, personal data "
-            "never logged, access only for the owner."
-        )
+    personal = state.personal_data
+    if personal is not None and personal.stored:
+        kinds = ", ".join(personal.kinds) or "personal data"
+        extra = [
+            f"Personal data stored: {kinds}.",
+            "Add a principle 'Personal Data Protection': store only the listed personal data, "
+            "never log it, hash passwords if any, access only for authorised users.",
+        ]
+    elif personal is not None:
+        extra = ["Personal data: none is stored."]
+    else:
+        extra = [f"Personal data: {a.get('personal_data', 'unknown')}"]
     extra.append(f"Target devices: {a.get('devices', 'computer')} (responsive web UI).")
     return "\n".join(
         [
@@ -109,7 +120,8 @@ def render_constitution_brief(state: InterviewState, project_name: str) -> str:
             "Core principles:",
             principles,
             *extra,
-            "Governance: amendments require user approval; version 1.0.0.",
+            f"Governance: amendments require user approval; version 1.0.0; ratified and last "
+            f"amended on {today.isoformat()}. Leave no TODO placeholders.",
             _LANGUAGE_RULES,
         ]
     )

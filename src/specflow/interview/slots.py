@@ -25,7 +25,9 @@ CONSTITUTION_SLOTS = [
     Slot(
         name="personal_data",
         label="Dane osobowe",
-        hint="Czy aplikacja przechowuje dane osobowe (e-maile, hasła, adresy)? Jakie?",
+        hint="Czy aplikacja przechowuje dane osobowe? Jakie? Danymi osobowymi są też same "
+        "imiona, e-maile, telefony, adresy, zdjęcia osób, hasła. Odpowiedź zapisz w polu "
+        '"personal_data" (stored + kinds), a nie w "updates".',
     ),
     Slot(
         name="devices",
@@ -63,9 +65,22 @@ class Story(BaseModel):
     """"Jak poznać, że działa" - z tego powstaną scenariusze Given/When/Then i testy."""
 
 
+class PersonalData(BaseModel):
+    """Czy aplikacja przechowuje dane osobowe - wyciąga MODEL (rozumienie wypowiedzi),
+    a KOD na tej podstawie decyduje o zasadzie ochrony danych w konstytucji (M6b).
+    Zastępuje heurystykę po słowach kluczowych ("tak", "@"), która zawiodła na
+    odpowiedzi "Tylko imiona członków rodziny"."""
+
+    stored: bool
+    kinds: list[str] = Field(default_factory=list)
+    """Rodzaje danych, np. ["imiona"], ["e-maile", "hasła"]."""
+
+
 class InterviewState(BaseModel):
     stage: Stage = "constitution"
     answers: dict[str, str] = Field(default_factory=dict)
+    personal_data: PersonalData | None = None
+    """Ustrukturyzowana odpowiedź o danych osobowych (etap constitution)."""
     stories: list[Story] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
@@ -93,6 +108,9 @@ def missing_slots(state: InterviewState) -> list[str]:
             continue
         if slot.name == "stories":
             if not state.stories or any(not s.acceptance for s in state.stories):
+                missing.append(slot.name)
+        elif slot.name == "personal_data":
+            if state.personal_data is None:  # liczy się odpowiedź tak/nie, nie sam tekst
                 missing.append(slot.name)
         elif not state.answers.get(slot.name, "").strip():
             missing.append(slot.name)

@@ -1,4 +1,5 @@
 import asyncio
+from datetime import date
 from pathlib import Path
 
 from conftest import say
@@ -18,7 +19,16 @@ from specflow.interview import (
     render_spec_brief,
     render_spec_summary,
 )
+from specflow.interview.prompts import INTERVIEW_PROMPT_VERSION
+from specflow.interview.slots import PersonalData
 from specflow.interview.turn import TurnOutput
+
+
+def say_json(**payload: object) -> str:
+    text = say(**payload).final_text
+    assert text is not None
+    return text
+
 
 LOGIN = Story(
     title="Logowanie",
@@ -133,5 +143,43 @@ def test_summary_and_briefs_are_built_by_code() -> None:
     brief = render_spec_brief(state)
     assert "1. Logowanie (Priority: P1)" in brief and "acceptance: po dobrym haśle" in brief
     assert "keep ALL Spec Kit template headings in English" in brief
-    constitution = render_constitution_brief(state, "Todo")
+    state.personal_data = PersonalData(stored=True, kinds=["e-maile"])
+    constitution = render_constitution_brief(state, "Todo", today=date(2026, 11, 9))
     assert "Test-First" in constitution and "Personal Data Protection" in constitution
+    assert "Personal data stored: e-maile." in constitution
+    assert "ratified and last amended on 2026-11-09" in constitution
+
+
+def test_personal_data_is_extracted_by_the_model_not_guessed_by_keywords() -> None:
+    """Regresja M6b: odpowiedź „Tylko imiona członków rodziny” nie zawiera słowa „tak”,
+    a to są dane osobowe. Model zwraca pole tak/nie, kod decyduje o zasadzie."""
+    state = InterviewState(stage="constitution")
+    assert missing_slots(state) == ["personal_data", "devices"]
+    turn, error = parse_turn(
+        say_json(
+            message="Rozumiem. Na jakich urządzeniach?",
+            updates={"personal_data": "Tylko imiona członków rodziny"},
+            personal_data={"stored": True, "kinds": ["imiona"]},
+        )
+    )
+    assert turn is not None and error is None
+    state, ignored = apply_turn(state, turn)
+    assert ignored == [] and missing_slots(state) == ["devices"]
+    assert state.answers["personal_data"] == "tak: imiona"
+    assert "Personal Data Protection" in render_constitution_brief(state, "Lista")
+
+    text_only = InterviewState(stage="constitution", answers={"personal_data": "tak, e-maile"})
+    assert "personal_data" in missing_slots(text_only)  # sam tekst nie wystarcza
+
+    nothing = InterviewState(stage="constitution", personal_data=PersonalData(stored=False))
+    assert "Personal data: none is stored." in render_constitution_brief(nothing, "Lista")
+    assert "Personal Data Protection" not in render_constitution_brief(nothing, "Lista")
+
+
+def test_prompt_v2_asks_no_question_when_done_and_does_not_greet_twice() -> None:
+    prompt = build_interview_prompt(InterviewState(stage="specify"), None)
+    assert INTERVIEW_PROMPT_VERSION == "interview/v2"
+    assert "bez powitania" in prompt and "przywitaj się" not in prompt
+    assert "NIE zadawaj" in prompt and "zaraz pokażesz podsumowanie" in prompt
+    first = build_interview_prompt(InterviewState(stage="constitution"), None)
+    assert "przywitaj się krótko" in first and '"personal_data"' in first

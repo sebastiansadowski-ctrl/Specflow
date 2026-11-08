@@ -51,7 +51,7 @@ INTERVIEW = [
     ),
     _say(
         message="Dziękuję. Na jakich urządzeniach będziesz z niej korzystać?",
-        updates={"personal_data": "nie"},
+        personal_data={"stored": False, "kinds": []},
     ),
     _say(message="Świetnie, zasady projektu gotowe.", updates={"devices": "komputer i telefon"}),
     _say(message="Teraz opowiedz, co ma robić Twoja aplikacja i kto będzie z niej korzystać."),

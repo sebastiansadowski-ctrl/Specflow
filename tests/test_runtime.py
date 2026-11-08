@@ -52,6 +52,8 @@ def test_demo_runs_from_first_question_to_done(tmp_path: Path) -> None:
     for key in ("T001", "T002", "T003", "T004", "T005"):
         assert f"{key}:" in log
     assert "Aplikacja jest gotowa" in store.messages(pid)[-1].text
+    usage = [e.payload["role"] for e in store.events(pid) if e.type == "llm_usage"]
+    assert "interviewer" in usage and "planner" in usage  # koszt wywiadu i planisty w eksporcie
     # Narracja dla UI powstaje z dziennika - bez dodatkowych wywołań modelu.
     assert not any("narrac" in str(p).lower() for _, p in harness.prompts)
 

@@ -27,6 +27,9 @@ class ArtifactCheck(BaseModel):
     problems: list[str] = Field(default_factory=list)
 
 
+_TODO_RE = re.compile(r"TODO\([A-Z_]+\)")
+
+
 def check_constitution(text: str) -> ArtifactCheck:
     problems = []
     tokens = sorted(set(_TEMPLATE_TOKEN_RE.findall(text)))
@@ -34,6 +37,9 @@ def check_constitution(text: str) -> ArtifactCheck:
         problems.append(f"nieuzupełnione pola szablonu: {', '.join(tokens[:5])}")
     if "test" not in text.lower():
         problems.append("brak zasady o testach (Test-First)")
+    todos = sorted(set(_TODO_RE.findall(text)))
+    if todos:
+        problems.append(f"zostawione znaczniki TODO: {', '.join(todos[:5])}")
     return ArtifactCheck(ok=not problems, problems=problems)
 
 
