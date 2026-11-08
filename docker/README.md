@@ -68,10 +68,27 @@ docker compose build          # pierwszy raz kilka minut
 docker compose run --rm opencode opencode auth login
 ```
 
-Wybierz **OpenAI**, a potem **ChatGPT Pro/Plus (headless)**. Kontener nie ma przeglądarki, więc
-OpenCode pokaże link i kod: otwórz link w przeglądarce na komputerze, zaloguj się do ChatGPT
-i wpisz kod. Wariant „browser” nie zadziała w kontenerze (czeka na odpowiedź na `localhost`
-wewnątrz kontenera). Logowanie zostaje w wolumenie `opencode-home`.
+Wybierz **OpenAI**, a potem **ChatGPT Pro/Plus (headless)**, jeśli jest na liście. Kontener nie
+ma przeglądarki, więc OpenCode pokaże link i kod: otwórz link w przeglądarce na komputerze,
+zaloguj się do ChatGPT i wpisz kod. Logowanie zostaje w wolumenie `opencode-home`.
+
+**Gdy jest tylko wariant „browser”** (tak było w OpenCode 2.2.5). OpenCode czeka na odpowiedź
+na `http://127.0.0.1:<port>/...` **wewnątrz kontenera**, więc przeglądarka na komputerze po
+zalogowaniu pokaże błąd połączenia. To nic złego:
+
+1. Otwórz link z terminala w przeglądarce i zaloguj się do ChatGPT.
+2. Gdy pojawi się błąd „Nie można połączyć”, skopiuj **cały adres** z paska przeglądarki
+   (zaczyna się od `http://127.0.0.1:`, zawiera `code=` i `state=`).
+3. W **drugim** terminalu (pierwszy dalej czeka) przekaż ten adres do kontenera logowania:
+
+   ```bash
+   C=$(docker ps --format '{{.Names}}' | grep opencode-run | head -n1)
+   docker exec "$C" node -e 'fetch(process.argv[1]).then(r => r.text()).then(console.log)' \
+     'http://127.0.0.1:<port>/...wklejony-adres...'
+   ```
+
+4. Pierwszy terminal zakończy logowanie. Adres jest jednorazowy i ważny kilka minut; zawiera
+   kod logowania, więc nigdzie go nie wklejaj poza tym poleceniem.
 
 ### 4. Domyślny model (jednorazowo)
 

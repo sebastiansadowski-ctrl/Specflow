@@ -61,3 +61,12 @@ w kontenerze Docker, na planie ChatGPT. Spec Kit przypięty do konkretnej wersji
   SQLite, pytest). Później: kilka gotowych profili (np. Node/TypeScript, Django), które
   użytkownik akceptuje albo wybiera na podstawie preferencji z wywiadu; każdy profil niesie
   własne komendy weryfikacji i pliki chronione (zob. ADR-0006, ADR-0007).
+
+- **Granice możliwości w wywiadzie (wariant A).** Pierwszy przebieg (M6b) pokazał, że model
+  przyjmuje życzenia spoza zakresu F00 (powiadomienia push w kryterium akceptacji). Plan: kod
+  trzyma listę tego, co dany profil stosu potrafi (aplikacja webowa, lokalna baza, bez usług
+  zewnętrznych, wysyłki e-maili/SMS, powiadomień push i aplikacji natywnych), i wkłada ją do
+  promptu wywiadu. Model mówi wprost, czego nie zrobimy, i proponuje zamiennik w zakresie
+  (np. wyróżnienie nowego zadania zamiast powiadomienia); kontrola specyfikacji zgłasza
+  kryteria, które wychodzą poza listę. Lista rośnie razem z profilami stosów: powiadomienia,
+  e-mail czy płatności wymagają hostingu, sekretów i atrap do deterministycznej weryfikacji.
