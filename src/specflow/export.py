@@ -5,7 +5,9 @@
 - project.json    - stan projektu (faza, bramka, stan wywiadu, dziennik planisty);
 - *.jsonl         - czat, zdarzenia (z narracją), zadania, runy (z promptami), decyzje, polecenia;
 - workspace.bundle - pełna historia gita projektu (`git clone workspace.bundle`);
-- workspace-status.txt - niezatwierdzone zmiany (np. przerwane podejście).
+- workspace-status.txt - niezatwierdzone zmiany (np. przerwane podejście);
+- workspace-untracked/ - treść nowych, jeszcze niezacommitowanych plików tekstowych
+  (np. specs/ przed akceptacją planu, które nie trafiają do bundle'a ani do diffu).
 
 Sekrety: eksport nie zawiera ustawień ani tokenów; dodatkowo każde wystąpienie hasła
 OpenCode w treści jest zamieniane na `***` (na wypadek, gdyby trafiło do logu agenta).
@@ -28,6 +30,9 @@ from specflow.web.narration import narrate
 from specflow.workspace import Workspace, WorkspaceError, run_command
 
 REDACTED = "***"
+UNTRACKED_DIR = "workspace-untracked"
+MAX_UNTRACKED_FILE = 256 * 1024
+MAX_UNTRACKED_TOTAL = 4 * 1024 * 1024
 
 
 def export_project(
@@ -87,6 +92,34 @@ def _add_workspace(archive: zipfile.ZipFile, workspace: Workspace, hidden: list[
     status = run_command(["git", "status", "--short"], workspace.path)
     diff = run_command(["git", "diff"], workspace.path)
     archive.writestr("workspace-status.txt", _redact(f"{status}\n\n{diff}", hidden))
+    _add_untracked(archive, workspace, hidden)
+
+
+def _add_untracked(archive: zipfile.ZipFile, workspace: Workspace, hidden: list[str]) -> None:
+    """Nowe pliki tekstowe spoza gita (z .gitignore pomijanymi), z limitem rozmiaru."""
+    listing = run_command(
+        ["git", "ls-files", "--others", "--exclude-standard", "-z"], workspace.path
+    )
+    root = workspace.path.resolve()
+    skipped: list[str] = []
+    total = 0
+    for name in sorted(n for n in listing.split("\0") if n):
+        path = workspace.path / name
+        if path.is_symlink() or not path.is_file() or not path.resolve().is_relative_to(root):
+            continue
+        size = path.stat().st_size
+        if size > MAX_UNTRACKED_FILE or total + size > MAX_UNTRACKED_TOTAL:
+            skipped.append(f"{name} ({size} B: za duży)")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            skipped.append(f"{name} (plik binarny)")
+            continue
+        total += size
+        archive.writestr(f"{UNTRACKED_DIR}/{name}", _redact(text, hidden))
+    if skipped:
+        archive.writestr(f"{UNTRACKED_DIR}.skipped.txt", "\n".join(skipped) + "\n")
 
 
 def _event(event: Any) -> dict[str, Any]:

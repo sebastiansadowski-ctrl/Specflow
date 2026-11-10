@@ -157,10 +157,13 @@ class OpenCodeEventMapper:
                 return [AgentMessage(text=self.last_text)]
             case "session.step.ended" | "session.step.failed":
                 tokens = _as_dict(data.get("tokens"))
+                cache = _as_dict(tokens.get("cache"))
                 events = [
                     Usage(
-                        input_tokens=int(tokens.get("input", 0)),
-                        output_tokens=int(tokens.get("output", 0)),
+                        input_tokens=int(tokens.get("input") or 0),
+                        output_tokens=int(tokens.get("output") or 0),
+                        cache_read_tokens=int(cache.get("read") or 0),
+                        reasoning_tokens=int(tokens.get("reasoning") or 0),
                         cost_usd=float(data.get("cost") or 0.0),
                     )
                 ]

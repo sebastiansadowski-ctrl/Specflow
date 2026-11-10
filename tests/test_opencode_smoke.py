@@ -44,7 +44,8 @@ def test_real_opencode_events_map_to_our_vocabulary() -> None:
     ]
     assert events[3] == Usage(input_tokens=5539, output_tokens=44, cost_usd=0.0)
     assert isinstance(events[4], AgentMessage) and '"status": "done"' in events[4].text
-    assert events[5] == Usage(input_tokens=99, output_tokens=38, cost_usd=0.0)
+    # Drugi krok: prawie całe wejście z pamięci podręcznej (M6b: liczone osobno, nie gubione).
+    assert events[5] == Usage(input_tokens=99, output_tokens=38, cache_read_tokens=5504)
     assert mapper.terminal == "completed"
 
 

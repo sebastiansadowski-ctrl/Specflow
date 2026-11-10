@@ -8,8 +8,8 @@ import pytest
 
 from runtime_helpers import make_runtime, new_project, to_building
 from specflow.__main__ import main
-from specflow.export import export_project
-from specflow.workspace import run_command
+from specflow.export import MAX_UNTRACKED_FILE, export_project
+from specflow.workspace import Workspace, run_command
 
 SECRET = "tajne-haslo-opencode-123"
 
@@ -60,3 +60,32 @@ def test_export_cli_uses_settings_and_redacts_password(
     assert f"Zapisano eksport: {output}" in capsys.readouterr().out
     with zipfile.ZipFile(output) as archive:
         assert SECRET not in archive.read("chat.jsonl").decode()
+
+
+def test_export_includes_untracked_text_files(tmp_path: Path) -> None:
+    """Regresja M6b: przed akceptacją planu specs/ nie jest w gicie, więc bundle i diff
+    go nie zawierały - nie dało się ocenić tasks.md projektu zatrzymanego na bramce."""
+    rt, _ = make_runtime(tmp_path)
+    pid = new_project(rt)
+    with rt.sessions() as session:
+        name = rt.store(session, pid).get_project(pid).name
+    root = Workspace.path_for(rt.projects_dir, pid, name)
+    (root / "specs" / "001-x").mkdir(parents=True)
+    (root / "specs" / "001-x" / "tasks.md").write_text(f"- [ ] T001 zadanie {SECRET}\n")
+    (root / "obraz.bin").write_bytes(b"\xff\xfe\x00binarne")
+    (root / "duzy.md").write_text("x" * (MAX_UNTRACKED_FILE + 1))
+    (root / "link.md").symlink_to(tmp_path / "poza-workspace.md")
+    (tmp_path / "poza-workspace.md").write_text("nie powinno trafić do eksportu")
+
+    with rt.sessions() as session:
+        out = tmp_path / "e.zip"
+        path = export_project(session, rt.projects_dir, pid, out, secrets=[SECRET])
+
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        tasks = archive.read("workspace-untracked/specs/001-x/tasks.md").decode()
+        assert tasks == "- [ ] T001 zadanie ***\n"
+        assert not {"workspace-untracked/obraz.bin", "workspace-untracked/duzy.md"} & names
+        assert "workspace-untracked/link.md" not in names
+        skipped = archive.read("workspace-untracked.skipped.txt").decode()
+        assert "obraz.bin (plik binarny)" in skipped and "duzy.md" in skipped

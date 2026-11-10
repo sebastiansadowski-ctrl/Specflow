@@ -58,7 +58,11 @@ class FileChanged(BaseModel):
 class Usage(BaseModel):
     kind: Literal["usage"] = "usage"
     input_tokens: int = 0
+    """Tokeny wejścia bez odczytów z pamięci podręcznej (OpenCode liczy je osobno)."""
     output_tokens: int = 0
+    cache_read_tokens: int = 0
+    """Wejście odczytane z pamięci podręcznej modelu (np. powtarzany prompt systemowy)."""
+    reasoning_tokens: int = 0
     cost_usd: float = 0.0
 
 
