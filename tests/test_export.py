@@ -89,3 +89,10 @@ def test_export_includes_untracked_text_files(tmp_path: Path) -> None:
         assert "workspace-untracked/link.md" not in names
         skipped = archive.read("workspace-untracked.skipped.txt").decode()
         assert "obraz.bin (plik binarny)" in skipped and "duzy.md" in skipped
+
+
+def test_export_cli_reports_missing_project_without_traceback(tmp_path: Path) -> None:
+    make_runtime(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        main(["export", "99", "-o", str(tmp_path / "x.zip"), "--data-dir", str(tmp_path)])
+    assert exc.value.code == "Błąd: Brak projektu 99."

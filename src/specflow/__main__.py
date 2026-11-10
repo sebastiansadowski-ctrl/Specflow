@@ -45,7 +45,12 @@ def parse_args(argv: Sequence[str] | None = None) -> dict[str, Any]:
 def main(argv: Sequence[str] | None = None) -> None:
     args = vars(_parser().parse_args(argv))
     if args.pop("command", None) == "export":
-        run_export(args)
+        from specflow.storage import ProjectStoreError
+
+        try:
+            run_export(args)
+        except ProjectStoreError as exc:  # np. zły numer projektu: komunikat zamiast tracebacku
+            raise SystemExit(f"Błąd: {exc}") from None
         return
     from specflow.web.app import create_app
 

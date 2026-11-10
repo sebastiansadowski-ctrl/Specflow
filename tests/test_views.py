@@ -173,3 +173,17 @@ def test_failed_workspace_setup_leaves_no_broken_project(
     assert api.status_code == 502 and "specify init" in api.json()["detail"]
     assert client.get("/api/projects").json() == []
     assert not any(rt.projects_dir.iterdir())
+
+
+def test_artifact_list_refresh_keeps_open_document(env: tuple[TestClient, Runtime]) -> None:
+    """Regresja M6b: przyciski dziedziczyły hx-swap="outerHTML" listy, więc pierwszy podgląd
+    zastępował #artifact-view, a kolejne kliknięcia kończyły się htmx:targetError; do tego
+    odświeżenie listy (sf:artifacts) kasowało otwarty dokument."""
+    client, rt = env
+    pid = created(client, rt)
+    to_building(rt, pid)
+    html = client.get(f"/projects/{pid}/artifacts").text
+    listing = html.split('<div id="artifacts"', 1)[1].split('<div id="artifact-view"', 1)[0]
+    assert 'hx-select="#artifacts"' in listing and 'hx-disinherit="*"' in listing
+    assert listing.count('hx-target="#artifact-view" hx-swap="innerHTML"') >= 3
+    assert '<div id="artifact-view"' in html.split("</ul>", 1)[1]  # podgląd poza listą

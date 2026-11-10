@@ -1,14 +1,21 @@
+{#- Lista odświeża się po zdarzeniach planisty (sf:artifacts), a otwarty dokument zostaje:
+    odświeżany jest tylko #artifacts (hx-select), podgląd #artifact-view leży obok.
+    hx-disinherit: przyciski nie dziedziczą hx-swap/hx-select listy (wcześniej podgląd
+    zastępował sam siebie i kolejne kliknięcia kończyły się htmx:targetError). -#}
+<div class="docs">
 <div id="artifacts" hx-get="/projects/{{ project.id }}/artifacts"
-     hx-trigger="sf:artifacts from:body delay:300ms" hx-swap="outerHTML">
+     hx-trigger="sf:artifacts from:body delay:300ms" hx-swap="outerHTML" hx-select="#artifacts"
+     hx-disinherit="*">
 <h2>Dokumenty projektu</h2>
 {% if artifacts %}
 <ul class="artifact-list">
   {% for a in artifacts %}
-  <li><button type="button" class="link" hx-get="/projects/{{ project.id }}/artifact?path={{ a.path | urlencode }}" hx-target="#artifact-view">{{ a.title }}</button></li>
+  <li><button type="button" class="link" hx-get="/projects/{{ project.id }}/artifact?path={{ a.path | urlencode }}" hx-target="#artifact-view" hx-swap="innerHTML">{{ a.title }}</button></li>
   {% endfor %}
 </ul>
 {% else %}
 <p class="muted">Dokumenty pojawią się, gdy planista je przygotuje.</p>
 {% endif %}
-<div id="artifact-view" class="artifact-view"></div>
+</div>
+<div id="artifact-view" class="artifact-view" aria-live="polite"></div>
 </div>
