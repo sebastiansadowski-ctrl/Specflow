@@ -1,0 +1,44 @@
+name: Mirror to GitLab
+
+# GitHub jest repozytorium głównym, GitLab jego lustrem.
+# Każda zmiana gałęzi lub tagu na GitHubie (push, merge PR, usunięcie) trafia na GitLab.
+# Uwierzytelnienie: klucz wdrożeniowy SSH z prawem zapisu, przypisany tylko do projektu
+# na GitLabie (GitLab Free nie ma tokenów projektu). Prywatna część klucza jest w sekrecie
+# GITLAB_MIRROR_KEY.
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  delete:
+
+concurrency:
+  group: mirror-gitlab
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Push branches and tags to GitLab
+        env:
+          SSH_KEY: ${{ secrets.GITLAB_MIRROR_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ github.repository }}
+          TARGET: git@gitlab.com:none9324545/specflow.git
+        run: |
+          set -euo pipefail
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Przypięty klucz hosta gitlab.com (zamiast ssh-keyscan, który ufa pierwszej odpowiedzi).
+          echo "gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf" > ~/.ssh/known_hosts
+          git clone --bare --quiet "https://x-access-token:${GH_TOKEN}@github.com/${SOURCE}.git" repo.git
+          cd repo.git
+          # Tylko gałęzie i tagi; bez refs/pull/* z GitHuba. --prune usuwa na GitLabie gałęzie,
+          # których nie ma już na GitHubie.
+          git push --prune "$TARGET" '+refs/heads/*:refs/heads/*' '+refs/tags/*:refs/tags/*'
